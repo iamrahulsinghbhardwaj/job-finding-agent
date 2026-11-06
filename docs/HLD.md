@@ -1,6 +1,6 @@
 # Job Hunter Agent — High-Level Design
 
-**Version:** 0.2 · **Updated:** 6 Nov 2026 · **Status:** Phase 0 (Validate)
+**Version:** 0.3 · **Updated:** 6 Nov 2026 · **Status:** Phase 0 (Validate)
 Progress lives in [TODO.md](../TODO.md).
 
 ---
@@ -233,7 +233,21 @@ Seven tables in one Postgres database; the company row is the hub everything els
 | Outreach | id, company_id, status (suggested / drafted / sent / followed_up / replied / closed), gmail_draft_id, last_action_at, cool_off_until | One open row per company |
 | Run | id, started_at, finished_at, per_source_counts (JSON), emailed_job_ids, cost_usd | Idempotency + observability |
 
-The CV and preference weights stay out of the public repo: stored as GitHub Actions secrets or a private gist, loaded at run time.
+The CV and preference weights stay out of the public repo. The CV lives in a private Azure Blob container (see §10); preference weights live in a private config loaded at run time.
+
+### Why Postgres, not NoSQL
+
+The data is relational and the hot paths are relational operations, so a relational store fits better than a document store here.
+
+| Access pattern | Postgres | Document store (Cosmos DB, MongoDB) |
+| --- | --- | --- |
+| Dedupe: upsert on (company, source_job_id) | One `INSERT … ON CONFLICT` with a unique constraint | Needs a careful partition key and id design to get the same guarantee |
+| Digest: jobs ⋈ rankings ⋈ companies, filtered by tier and score | One SQL query | Several queries joined in code, or duplicated data |
+| Outreach state machine with cool-off dates | Constraints and transactions | Possible, more code |
+| Flexible bits (adapter configs, raw payload samples) | `JSONB` columns | Native |
+| Scale | ~50k–100k job rows, well under 1 GB | Built for far larger scale than this needs |
+
+NoSQL would be the right call only if raw HTML/JSON snapshots were stored at volume; those would go to blob storage, not the database.
 
 ---
 
@@ -248,13 +262,18 @@ Python, free tiers only, public repo. At this scale one async process per run re
 | HTTP | `httpx` (async) | Timeouts, HTTP/2, easy to record for tests |
 | Browser | Playwright for Python, only for discovery and JS-only sites | Installed only in the discovery workflow |
 | Models | Pydantic | One validated schema for jobs, configs, LLM output |
-| Store | Neon Postgres free tier via SQLAlchemy + Alembic | Scales to zero between runs; data never in the repo |
+| Store | Neon Postgres, Free plan, via SQLAlchemy + Alembic | Permanent free plan (1 GB storage, 100 CU-hours/month per project); two ~10-minute runs a day use a few CU-hours; scales to zero between runs |
+| CV | PDF in a private Azure Blob container, read with a read-only SAS URL | Update the CV by re-uploading the same blob; the next run picks it up |
 | LLM | OpenAI API (existing credits): small model for ranking with Structured Outputs, stronger model for agents | The one paid piece; rule-score fallback; monthly budget cap set in OpenAI |
 | Email | Gmail API (send digest, create drafts, read replies) | Drafts land in my own inbox |
-| Secrets | GitHub Actions secrets: `OPENAI_API_KEY`, `DATABASE_URL`, `GMAIL_TOKEN`, `PROFILE_CV` | Nothing sensitive committed |
+| Secrets | GitHub Actions secrets: `OPENAI_API_KEY`, `DATABASE_URL`, `GMAIL_TOKEN`, `CV_BLOB_SAS_URL` | Nothing sensitive committed |
 | Tracker | Export of Company + Outreach to a sheet | Full startup list lives outside the email |
 
 **Hosting.** Nothing runs between runs. Each run is a GitHub Actions job: checkout, install dependencies (cached), `python -m jobs.run`, exit. A weekly keep-alive workflow stops GitHub pausing the schedule after 60 days without activity. Actions logs are public, so logs carry counts only, never job data, CV or email content.
+
+**CV loading.** At the start of each run: download the CV with the SAS URL, extract text (`pypdf`), hash it. Only when the hash changes, rebuild the ranking profile (skills, years, projects) with one LLM call and store it, versioned, so rankings record which profile version they used. The SAS is scoped to that one blob, read-only, with an expiry; a run-failure alert fires before it lapses.
+
+**Why Neon over Azure or AWS Postgres.** Azure Database for PostgreSQL (B1MS, 32 GB) and AWS RDS are free only for 12 months for new accounts, then bill for an always-on server. Neon's Free plan does not expire and suspends when idle, which suits a job that runs 20 minutes a day. Moving later is a connection-string change, since it is plain Postgres.
 
 **Planned repo layout**
 
@@ -326,6 +345,8 @@ Detailed tasks: [TODO.md](../TODO.md).
 | Stack | Python |
 | LLM | OpenAI API (existing credits) |
 | Hosting | Free tiers only: GitHub Actions + Neon Postgres |
+| Database | Postgres (Neon Free plan), not NoSQL: relational data, upserts and joins |
+| CV storage | Private Azure Blob container, read via read-only SAS URL |
 | Repo | Public on GitHub |
 | Roles | SDE2, Senior, Backend, Platform, Distributed Systems, AI Engineer |
 | Experience | Roles asking 4+ years; Tier 1 capped at 6 |

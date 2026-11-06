@@ -10,7 +10,7 @@ Design: [docs/HLD.md](docs/HLD.md)
 ## Open decisions
 
 - [ ] Confirm the ~50 Tier 1 companies (incl. whether Flipkart, PhonePe, Razorpay, CRED, Swiggy, Zomato, Meesho count as Tier 1)
-- [ ] Add the current CV as the ranking source of truth (stored as a GitHub secret, never committed)
+- [ ] Upload CV (PDF) to a private Azure Blob container; create a read-only SAS URL for that blob (with expiry); save it as the `CV_BLOB_SAS_URL` secret
 - [ ] Decide hours per week committed to this project
 - [ ] Confirm experience rule: roles asking 4+ years, Tier 1 capped at 6
 
@@ -28,7 +28,8 @@ Design: [docs/HLD.md](docs/HLD.md)
 **Project setup**
 - [ ] Python 3.12 skeleton: `core/`, `adapters/`, `pipeline/`, `agents/`, `digest/`, `jobs/`, `tests/`
 - [ ] `pyproject.toml`, ruff, pytest, pre-commit
-- [ ] Neon Postgres free project; `DATABASE_URL` secret
+- [ ] Neon Postgres project on the Free plan; `DATABASE_URL` secret
+- [ ] CV loader: download via SAS, extract text with `pypdf`, hash; rebuild ranking profile only when the hash changes
 - [ ] Alembic migrations: Company, Source, Job, Ranking, Run
 - [ ] OpenAI key as `OPENAI_API_KEY` secret + monthly budget cap in the OpenAI dashboard
 - [ ] Gmail API OAuth (send, compose drafts, read) → `GMAIL_TOKEN` secret
