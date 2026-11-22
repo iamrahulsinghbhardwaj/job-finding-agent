@@ -1,7 +1,8 @@
 """Runtime settings, read from environment variables (and a local .env file).
 
-Secrets are optional at load time so that tests and local tooling work without them;
-code that needs a secret should call `require()` to fail loudly when it is missing.
+Everything is optional at load time so that tests and local tooling work without secrets;
+code that needs a value should call `require()` to fail loudly when it is missing.
+Secret-like values are `SecretStr` so they never appear in reprs or logs.
 """
 
 from functools import lru_cache
@@ -17,15 +18,29 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    # Storage
     database_url: SecretStr | None = None
+
+    # LLM
     openai_api_key: SecretStr | None = None
-    gmail_token: SecretStr | None = None
+    rank_model: str | None = None
+    profile_model: str | None = None
+
+    # CV
     cv_blob_sas_url: SecretStr | None = None
 
-    log_level: str = "INFO"
+    # Gmail (OAuth installed-app flow; refresh token minted once, locally)
+    gmail_client_id: SecretStr | None = None
+    gmail_client_secret: SecretStr | None = None
+    gmail_refresh_token: SecretStr | None = None
+    digest_to: SecretStr | None = None  # personal address: keep out of public logs
+
+    def present_settings(self) -> dict[str, bool]:
+        """Map each setting's env var name to whether it is set. Never returns values."""
+        return {name.upper(): getattr(self, name) is not None for name in type(self).model_fields}
 
     def require(self, name: str) -> str:
-        """Return the secret value of setting `name`, or raise if it is unset."""
+        """Return the value of setting `name`, or raise if it is unset."""
         value = getattr(self, name)
         if value is None:
             raise RuntimeError(f"Missing required setting: {name.upper()}")

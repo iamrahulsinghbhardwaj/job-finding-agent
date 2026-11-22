@@ -27,7 +27,7 @@ Design: [docs/HLD.md](docs/HLD.md)
 
 **Project setup**
 - [x] Python 3.12 skeleton: `core/`, `adapters/`, `pipeline/`, `agents/`, `digest/`, `jobs/`, `tests/`
-- [ ] `pyproject.toml`, ruff, pytest, pre-commit
+- [x] `pyproject.toml`, ruff, pytest, pre-commit
 - [ ] Neon Postgres project on the Free plan; `DATABASE_URL` secret
 - [ ] CV loader: download via SAS, extract text with `pypdf`, hash; rebuild ranking profile only when the hash changes
 - [ ] Alembic migrations: Company, Source, Job, Ranking, Run
