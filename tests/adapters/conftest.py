@@ -29,6 +29,19 @@ def stripe() -> Company:
 
 
 @pytest.fixture
+def palantir() -> Company:
+    return Company(
+        slug="palantir",
+        name="Palantir",
+        tier=Tier.OTHER,
+        india_presence=False,
+        europe_presence=True,
+        us_transfer_path=True,
+        sources=[SourceConfig(platform=Platform.LEVER, tenant="palantir")],
+    )
+
+
+@pytest.fixture
 async def http() -> AsyncIterator[PoliteClient]:
     async def no_sleep(_: float) -> None:
         return None

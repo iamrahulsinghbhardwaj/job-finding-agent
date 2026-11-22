@@ -33,6 +33,17 @@ companies:
       - platform: greenhouse
         tenant: stripe
 
+  # Test entry for the Lever adapter (tier OTHER per brick 6). Office flags read from the board.
+  - slug: palantir
+    name: Palantir
+    tier: OTHER
+    india_presence: false
+    europe_presence: true
+    us_transfer_path: true
+    sources:
+      - platform: lever
+        tenant: palantir
+
 # TODO: other Tier 1 companies named in docs/HLD.md. Platform and tenant to be
 # confirmed per company before adding (no guesses).
 #   - google

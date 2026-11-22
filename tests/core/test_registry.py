@@ -77,8 +77,10 @@ def test_missing_file_fails(tmp_path: Path) -> None:
 
 def test_committed_registry_is_valid() -> None:
     companies = {c.slug: c for c in load_registry(REPO_ROOT / "companies.yaml")}
-    assert set(companies) == {"microsoft", "amazon", "stripe"}
-    assert all(c.tier is Tier.T1 for c in companies.values())
+    assert set(companies) == {"microsoft", "amazon", "stripe", "palantir"}
+    assert all(companies[s].tier is Tier.T1 for s in ("microsoft", "amazon", "stripe"))
+    assert companies["palantir"].tier is Tier.OTHER  # test entry for the Lever adapter
+    assert companies["palantir"].sources[0].platform is Platform.LEVER
     assert companies["microsoft"].sources[0].platform is Platform.EIGHTFOLD
     assert companies["amazon"].sources[0].tenant == "amazon.jobs"
     assert companies["stripe"].india_presence is False

@@ -14,7 +14,8 @@ def test_prints_table(capsys: pytest.CaptureFixture[str]) -> None:
     assert lines[2].split() == ["microsoft", "T1", "eightfold", "microsoft.com"]
     assert lines[3].split() == ["amazon", "T1", "amazon", "amazon.jobs"]
     assert lines[4].split() == ["stripe", "T1", "greenhouse", "stripe"]
-    assert lines[-1] == "3 companies"
+    assert lines[5].split() == ["palantir", "OTHER", "lever", "palantir"]
+    assert lines[-1] == "4 companies"
 
 
 def test_company_without_sources_shows_dash(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
