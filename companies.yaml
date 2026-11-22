@@ -1,0 +1,54 @@
+# Company registry. Tiers are set by hand (Rahul), never by code or the LLM.
+# Schema: see Company / SourceConfig in src/jobagent/core/models.py.
+# Check this file with: uv run python -m jobagent.jobs.registry
+
+companies:
+  - slug: microsoft
+    name: Microsoft
+    tier: T1
+    india_presence: true
+    europe_presence: true
+    us_transfer_path: true
+    sources:
+      - platform: eightfold
+        tenant: microsoft.com
+
+  - slug: amazon
+    name: Amazon
+    tier: T1
+    india_presence: true
+    europe_presence: true
+    us_transfer_path: true
+    sources:
+      - platform: amazon
+        tenant: amazon.jobs
+
+  - slug: stripe
+    name: Stripe
+    tier: T1
+    india_presence: false
+    europe_presence: true
+    us_transfer_path: true
+    sources:
+      - platform: greenhouse
+        tenant: stripe
+
+# TODO: other Tier 1 companies named in docs/HLD.md. Platform and tenant to be
+# confirmed per company before adding (no guesses).
+#   - google
+#   - apple
+#   - meta        (HLD: via job-alert emails, not crawling)
+#   - netflix
+#   - uber
+#   - databricks
+#
+# TODO: open decision in TODO.md, whether these count as Tier 1:
+#   - flipkart
+#   - phonepe
+#   - razorpay
+#   - cred
+#   - swiggy
+#   - zomato
+#   - meesho
+#
+# TODO: rest of the ~50 hand-picked Tier 1 list (to be confirmed).
