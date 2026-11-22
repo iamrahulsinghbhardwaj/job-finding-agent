@@ -43,7 +43,7 @@ Design: [docs/HLD.md](docs/HLD.md)
 
 **Adapters**
 - [x] `JobSource` protocol + `SearchSpec`, `RawJob`, `JobDetail`, `HealthReport` models
-- [ ] Greenhouse adapter
+- [x] Greenhouse adapter
 - [ ] Lever adapter
 - [ ] Ashby adapter
 - [ ] Eightfold adapter (Microsoft, Netflix): `pcsx/search` + `pcsx/position_details`

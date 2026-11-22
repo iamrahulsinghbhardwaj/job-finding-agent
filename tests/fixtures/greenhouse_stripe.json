@@ -1,0 +1,547 @@
+{
+  "jobs": [
+    {
+      "absolute_url": "https://stripe.com/jobs/search?gh_jid=8352489",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "education": "education_required",
+      "internal_job_id": 3610144,
+      "location": {
+        "name": "Bangalore"
+      },
+      "metadata": null,
+      "id": 8352489,
+      "updated_at": "2026-11-19T12:10:22-05:00",
+      "requisition_id": "See Opening ID",
+      "title": "Account Executive, Commercial & SMB (India)",
+      "company_name": "Stripe",
+      "first_published": "2026-11-10T22:43:54-05:00",
+      "language": "en",
+      "application_deadline": null
+    },
+    {
+      "absolute_url": "https://stripe.com/jobs/search?gh_jid=7893199",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": true
+        }
+      ],
+      "education": "education_required",
+      "internal_job_id": 3431456,
+      "location": {
+        "name": "Singapore"
+      },
+      "metadata": null,
+      "id": 7893199,
+      "updated_at": "2026-11-19T12:09:53-05:00",
+      "requisition_id": "See Opening ID",
+      "title": "Account Executive, Cross Border China",
+      "company_name": "Stripe",
+      "first_published": "2026-05-06T04:59:55-04:00",
+      "language": "en",
+      "application_deadline": null
+    },
+    {
+      "absolute_url": "https://stripe.com/jobs/search?gh_jid=8319459",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "education": "education_required",
+      "internal_job_id": 3596623,
+      "location": {
+        "name": "Dublin "
+      },
+      "metadata": null,
+      "id": 8319459,
+      "updated_at": "2026-11-19T12:10:18-05:00",
+      "requisition_id": "See Opening ID",
+      "title": "Account Executive, Platforms Hunter (Spanish fluency)",
+      "company_name": "Stripe",
+      "first_published": "2026-10-27T13:53:26-04:00",
+      "language": "en",
+      "application_deadline": null
+    },
+    {
+      "absolute_url": "https://stripe.com/jobs/search?gh_jid=8190048",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "education": "education_required",
+      "internal_job_id": 3544091,
+      "location": {
+        "name": "US-Remote"
+      },
+      "metadata": null,
+      "id": 8190048,
+      "updated_at": "2026-11-19T12:12:25-05:00",
+      "requisition_id": "See Opening ID",
+      "title": "Account Executive, Product Sales - Tax",
+      "company_name": "Stripe",
+      "first_published": "2026-09-11T17:16:20-04:00",
+      "language": "en",
+      "application_deadline": null
+    },
+    {
+      "absolute_url": "https://stripe.com/jobs/search?gh_jid=8301379",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "education": "education_required",
+      "internal_job_id": 3589350,
+      "location": {
+        "name": "Toronto"
+      },
+      "metadata": null,
+      "id": 8301379,
+      "updated_at": "2026-11-19T12:10:17-05:00",
+      "requisition_id": "See Opening ID",
+      "title": "\tBackend / API Engineer, Radar",
+      "company_name": "Stripe",
+      "first_published": "2026-10-20T17:54:49-04:00",
+      "language": "en",
+      "application_deadline": null
+    },
+    {
+      "absolute_url": "https://stripe.com/jobs/search?gh_jid=8301253",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "education": "education_required",
+      "internal_job_id": 3589303,
+      "location": {
+        "name": "San Francisco, Seattle, New York"
+      },
+      "metadata": null,
+      "id": 8301253,
+      "updated_at": "2026-11-19T12:12:29-05:00",
+      "requisition_id": "See Opening ID",
+      "title": "Backend / API Engineer, Radar",
+      "company_name": "Stripe",
+      "first_published": "2026-10-19T15:15:39-04:00",
+      "language": "en",
+      "application_deadline": null
+    },
+    {
+      "absolute_url": "https://stripe.com/jobs/search?gh_jid=5601879",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "education": "education_required",
+      "internal_job_id": 2755198,
+      "location": {
+        "name": "N/A"
+      },
+      "metadata": null,
+      "id": 5601879,
+      "updated_at": "2026-11-19T12:12:18-05:00",
+      "requisition_id": "See Opening ID",
+      "title": "Data Scientist",
+      "company_name": "Stripe",
+      "first_published": "2024-01-09T16:59:46-05:00",
+      "language": "en",
+      "application_deadline": null
+    },
+    {
+      "absolute_url": "https://stripe.com/jobs/search?gh_jid=8234252",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "education": "education_required",
+      "internal_job_id": 3563063,
+      "location": {
+        "name": "Bengaluru, India"
+      },
+      "metadata": null,
+      "id": 8234252,
+      "updated_at": "2026-11-19T12:10:09-05:00",
+      "requisition_id": "See Opening ID",
+      "title": "Engineering Manager, Accounting Products",
+      "company_name": "Stripe",
+      "first_published": "2026-09-28T06:27:03-04:00",
+      "language": "en",
+      "application_deadline": null
+    },
+    {
+      "absolute_url": "https://stripe.com/jobs/search?gh_jid=8386610",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "education": "education_required",
+      "internal_job_id": 3619639,
+      "location": {
+        "name": "Bengaluru"
+      },
+      "metadata": null,
+      "id": 8386610,
+      "updated_at": "2026-11-19T12:10:24-05:00",
+      "requisition_id": "See Opening ID",
+      "title": "Engineering Manager, Core Infrastructure",
+      "company_name": "Stripe",
+      "first_published": "2026-11-16T12:48:06-05:00",
+      "language": "en",
+      "application_deadline": null
+    },
+    {
+      "absolute_url": "https://stripe.com/jobs/search?gh_jid=8352150",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "education": "education_required",
+      "internal_job_id": 3609985,
+      "location": {
+        "name": "Bengaluru "
+      },
+      "metadata": null,
+      "id": 8352150,
+      "updated_at": "2026-11-19T12:10:22-05:00",
+      "requisition_id": "See Opening ID",
+      "title": "Engineering Manager - Internal Systems Automations Platform",
+      "company_name": "Stripe",
+      "first_published": "2026-11-10T13:26:38-05:00",
+      "language": "en",
+      "application_deadline": null
+    },
+    {
+      "absolute_url": "https://stripe.com/jobs/search?gh_jid=8181003",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "education": "education_required",
+      "internal_job_id": 3540167,
+      "location": {
+        "name": "Dublin"
+      },
+      "metadata": null,
+      "id": 8181003,
+      "updated_at": "2026-11-19T12:10:04-05:00",
+      "requisition_id": "See Opening ID",
+      "title": "Forward Deployed Security Engineer",
+      "company_name": "Stripe",
+      "first_published": "2026-09-06T11:22:28-04:00",
+      "language": "en",
+      "application_deadline": null
+    },
+    {
+      "absolute_url": "https://stripe.com/jobs/search?gh_jid=8226261",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "education": "education_required",
+      "internal_job_id": 3233322,
+      "location": {
+        "name": "London"
+      },
+      "metadata": null,
+      "id": 8226261,
+      "updated_at": "2026-11-19T12:09:50-05:00",
+      "requisition_id": "See Opening ID",
+      "title": "Full Stack Engineer, Money Movement",
+      "company_name": "Stripe",
+      "first_published": "2026-09-23T09:54:13-04:00",
+      "language": "en",
+      "application_deadline": null
+    },
+    {
+      "absolute_url": "https://stripe.com/jobs/search?gh_jid=8315954",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "education": "education_required",
+      "internal_job_id": 3595196,
+      "location": {
+        "name": "Dublin"
+      },
+      "metadata": null,
+      "id": 8315954,
+      "updated_at": "2026-11-19T12:10:18-05:00",
+      "requisition_id": "See Opening ID",
+      "title": "Full-Stack Software Engineer, Communication Tools",
+      "company_name": "Stripe",
+      "first_published": "2026-11-03T10:12:00-05:00",
+      "language": "en",
+      "application_deadline": null
+    },
+    {
+      "absolute_url": "https://stripe.com/jobs/search?gh_jid=8337955",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "education": "education_required",
+      "internal_job_id": 3604036,
+      "location": {
+        "name": "London"
+      },
+      "metadata": null,
+      "id": 8337955,
+      "updated_at": "2026-11-19T12:10:21-05:00",
+      "requisition_id": "See Opening ID",
+      "title": " Integration Engineer",
+      "company_name": "Stripe",
+      "first_published": "2026-11-17T14:03:34-05:00",
+      "language": "en",
+      "application_deadline": null
+    },
+    {
+      "absolute_url": "https://stripe.com/jobs/search?gh_jid=8267102",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "education": "education_required",
+      "internal_job_id": 3577067,
+      "location": {
+        "name": "Dublin"
+      },
+      "metadata": null,
+      "id": 8267102,
+      "updated_at": "2026-11-19T12:10:14-05:00",
+      "requisition_id": "See Opening ID",
+      "title": "Integration Engineer",
+      "company_name": "Stripe",
+      "first_published": "2026-10-20T10:18:32-04:00",
+      "language": "en",
+      "application_deadline": null
+    },
+    {
+      "absolute_url": "https://stripe.com/jobs/search?gh_jid=8338849",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "education": "education_required",
+      "internal_job_id": 3604359,
+      "location": {
+        "name": "London"
+      },
+      "metadata": null,
+      "id": 8338849,
+      "updated_at": "2026-11-19T12:10:21-05:00",
+      "requisition_id": "See Opening ID",
+      "title": "Integration Engineer, Metronome",
+      "company_name": "Stripe",
+      "first_published": "2026-11-04T10:19:58-05:00",
+      "language": "en",
+      "application_deadline": null
+    },
+    {
+      "absolute_url": "https://stripe.com/jobs/search?gh_jid=8171222",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "education": "education_required",
+      "internal_job_id": 3536436,
+      "location": {
+        "name": "London"
+      },
+      "metadata": null,
+      "id": 8171222,
+      "updated_at": "2026-11-19T12:10:02-05:00",
+      "requisition_id": "See Opening ID",
+      "title": "Integration Engineer, Metronome ",
+      "company_name": "Stripe",
+      "first_published": "2026-09-02T10:38:07-04:00",
+      "language": "en",
+      "application_deadline": null
+    },
+    {
+      "absolute_url": "https://stripe.com/jobs/search?gh_jid=7975721",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "education": "education_required",
+      "internal_job_id": 3461630,
+      "location": {
+        "name": "LOCATION"
+      },
+      "metadata": null,
+      "id": 7975721,
+      "updated_at": "2026-11-19T12:09:55-05:00",
+      "requisition_id": "See Opening ID",
+      "title": "Payments Analyst",
+      "company_name": "Stripe",
+      "first_published": "2026-06-09T03:20:07-04:00",
+      "language": "en",
+      "application_deadline": null
+    },
+    {
+      "absolute_url": "https://stripe.com/jobs/search?gh_jid=8174984",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "education": "education_required",
+      "internal_job_id": 3537998,
+      "location": {
+        "name": "Dublin, Ireland"
+      },
+      "metadata": null,
+      "id": 8174984,
+      "updated_at": "2026-11-19T12:10:03-05:00",
+      "requisition_id": "See Opening ID",
+      "title": "Security Engineer, ACE",
+      "company_name": "Stripe",
+      "first_published": "2026-09-18T10:43:59-04:00",
+      "language": "en",
+      "application_deadline": null
+    },
+    {
+      "absolute_url": "https://stripe.com/jobs/search?gh_jid=8257892",
+      "data_compliance": [
+        {
+          "type": "gdpr",
+          "requires_consent": false,
+          "requires_processing_consent": false,
+          "requires_retention_consent": false,
+          "retention_period": null,
+          "demographic_data_consent_applies": false
+        }
+      ],
+      "education": "education_required",
+      "internal_job_id": 3573229,
+      "location": {
+        "name": "Dublin"
+      },
+      "metadata": null,
+      "id": 8257892,
+      "updated_at": "2026-11-19T12:10:11-05:00",
+      "requisition_id": "See Opening ID",
+      "title": "Security Engineer, New Grad",
+      "company_name": "Stripe",
+      "first_published": "2026-10-07T04:45:47-04:00",
+      "language": "en",
+      "application_deadline": null
+    }
+  ],
+  "meta": {
+    "total": 20
+  }
+}
