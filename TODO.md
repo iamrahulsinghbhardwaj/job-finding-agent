@@ -42,7 +42,7 @@ Design: [docs/HLD.md](docs/HLD.md)
 - [ ] Loader that upserts the registry into the DB
 
 **Adapters**
-- [ ] `JobSource` protocol + `SearchSpec`, `RawJob`, `JobDetail`, `HealthReport` models
+- [x] `JobSource` protocol + `SearchSpec`, `RawJob`, `JobDetail`, `HealthReport` models
 - [ ] Greenhouse adapter
 - [ ] Lever adapter
 - [ ] Ashby adapter
