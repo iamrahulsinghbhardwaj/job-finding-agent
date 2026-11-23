@@ -1,6 +1,7 @@
 import pytest
 
 from jobagent.adapters import ADAPTERS, UnsupportedPlatformError, build_source
+from jobagent.adapters.ashby import AshbySource
 from jobagent.adapters.greenhouse import GreenhouseSource
 from jobagent.adapters.lever import LeverSource
 from jobagent.core.http import PoliteClient
@@ -21,3 +22,8 @@ def test_unsupported_platform_raises(stripe: Company, http: PoliteClient) -> Non
 def test_lever_registered(palantir: Company, http: PoliteClient) -> None:
     assert ADAPTERS[Platform.LEVER] is LeverSource
     assert isinstance(build_source(palantir, palantir.sources[0], http), LeverSource)
+
+
+def test_ashby_registered(openai: Company, http: PoliteClient) -> None:
+    assert ADAPTERS[Platform.ASHBY] is AshbySource
+    assert isinstance(build_source(openai, openai.sources[0], http), AshbySource)

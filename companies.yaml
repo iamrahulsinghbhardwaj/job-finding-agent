@@ -44,6 +44,17 @@ companies:
       - platform: lever
         tenant: palantir
 
+  # Test entry for the Ashby adapter (tier OTHER like palantir; may become T1 as an AI lab).
+  - slug: openai
+    name: OpenAI
+    tier: OTHER
+    india_presence: true
+    europe_presence: true
+    us_transfer_path: true
+    sources:
+      - platform: ashby
+        tenant: openai
+
 # TODO: other Tier 1 companies named in docs/HLD.md. Platform and tenant to be
 # confirmed per company before adding (no guesses).
 #   - google

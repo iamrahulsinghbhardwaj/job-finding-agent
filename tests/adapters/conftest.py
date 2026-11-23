@@ -48,3 +48,16 @@ async def http() -> AsyncIterator[PoliteClient]:
 
     async with PoliteClient(min_delay=0, sleep=no_sleep) as client:
         yield client
+
+
+@pytest.fixture
+def openai() -> Company:
+    return Company(
+        slug="openai",
+        name="OpenAI",
+        tier=Tier.OTHER,
+        india_presence=True,
+        europe_presence=True,
+        us_transfer_path=True,
+        sources=[SourceConfig(platform=Platform.ASHBY, tenant="openai")],
+    )

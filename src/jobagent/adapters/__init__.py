@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 
+from jobagent.adapters.ashby import AshbySource
 from jobagent.adapters.greenhouse import GreenhouseSource
 from jobagent.adapters.lever import LeverSource
 from jobagent.core.contracts import JobSource
@@ -13,6 +14,7 @@ SourceFactory = Callable[[Company, SourceConfig, PoliteClient], JobSource]
 ADAPTERS: dict[Platform, SourceFactory] = {
     Platform.GREENHOUSE: GreenhouseSource,
     Platform.LEVER: LeverSource,
+    Platform.ASHBY: AshbySource,
 }
 
 

@@ -45,7 +45,7 @@ Design: [docs/HLD.md](docs/HLD.md)
 - [x] `JobSource` protocol + `SearchSpec`, `RawJob`, `JobDetail`, `HealthReport` models
 - [x] Greenhouse adapter
 - [x] Lever adapter
-- [ ] Ashby adapter
+- [x] Ashby adapter
 - [ ] Eightfold adapter (Microsoft, Netflix): `pcsx/search` + `pcsx/position_details`
 - [ ] Amazon adapter (`search.json`, split by category to stay under the 10,000 cap)
 - [ ] Contract tests per adapter against recorded responses
