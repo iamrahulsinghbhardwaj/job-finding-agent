@@ -47,7 +47,7 @@ Design: [docs/HLD.md](docs/HLD.md)
 - [x] Lever adapter
 - [x] Ashby adapter
 - [ ] Eightfold adapter (Microsoft, Netflix): `pcsx/search` + `pcsx/position_details`
-- [ ] Amazon adapter (`search.json`, split by category to stay under the 10,000 cap)
+- [x] Amazon adapter (`search.json`, split by category to stay under the 10,000 cap)
 - [ ] Contract tests per adapter against recorded responses
 - [ ] Incremental crawl: stop paging at the first job ID already stored
 - [ ] Per-domain rate limit, backoff retries, dead-letter table

@@ -1,6 +1,7 @@
 import pytest
 
 from jobagent.adapters import ADAPTERS, UnsupportedPlatformError, build_source
+from jobagent.adapters.amazon import AmazonSource
 from jobagent.adapters.ashby import AshbySource
 from jobagent.adapters.greenhouse import GreenhouseSource
 from jobagent.adapters.lever import LeverSource
@@ -27,3 +28,8 @@ def test_lever_registered(palantir: Company, http: PoliteClient) -> None:
 def test_ashby_registered(openai: Company, http: PoliteClient) -> None:
     assert ADAPTERS[Platform.ASHBY] is AshbySource
     assert isinstance(build_source(openai, openai.sources[0], http), AshbySource)
+
+
+def test_amazon_registered(amazon: Company, http: PoliteClient) -> None:
+    assert ADAPTERS[Platform.AMAZON] is AmazonSource
+    assert isinstance(build_source(amazon, amazon.sources[0], http), AmazonSource)

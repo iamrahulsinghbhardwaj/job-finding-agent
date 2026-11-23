@@ -1,4 +1,11 @@
-"""Fetch one company's jobs live: `python -m jobagent.jobs.fetch --company stripe --limit 10`."""
+"""Fetch one company's jobs live.
+
+    python -m jobagent.jobs.fetch --company stripe --limit 10
+    python -m jobagent.jobs.fetch --company amazon --country IN --keywords "Software Development Engineer"
+
+--keywords/--country are used by sources that search server-side (Amazon); board sources
+(Greenhouse, Lever, Ashby) return the whole board and ignore them.
+"""
 
 import argparse
 import asyncio
@@ -7,6 +14,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from jobagent.adapters import UnsupportedPlatformError, build_source
+from jobagent.adapters.common import ScopeError
 from jobagent.core.http import BlockedError, FetchError, PoliteClient
 from jobagent.core.models import Company, RawJob, SearchSpec, SourceStatus
 from jobagent.core.registry import RegistryError, load_registry
@@ -27,8 +35,7 @@ def report_blocked(company: Company) -> None:
             print(f"Skipping blocked source {name}: {source.blocked_reason}")
 
 
-async def fetch_jobs(company: Company, limit: int, http: PoliteClient) -> list[RawJob]:
-    spec = SearchSpec(keywords=[], countries=[])
+async def fetch_jobs(company: Company, spec: SearchSpec, limit: int, http: PoliteClient) -> list[RawJob]:
     jobs: list[RawJob] = []
     for source_config in company.active_sources:
         source = build_source(company, source_config, http)
@@ -39,9 +46,9 @@ async def fetch_jobs(company: Company, limit: int, http: PoliteClient) -> list[R
     return jobs
 
 
-async def _run(company: Company, limit: int) -> list[RawJob]:
+async def _run(company: Company, spec: SearchSpec, limit: int) -> list[RawJob]:
     async with PoliteClient() as http:
-        return await fetch_jobs(company, limit, http)
+        return await fetch_jobs(company, spec, limit, http)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -49,7 +56,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--company", required=True, help="company slug from the registry")
     parser.add_argument("--limit", type=_positive_int, default=10, help="max jobs to print")
     parser.add_argument("--path", type=Path, default=Path("companies.yaml"), help="registry file")
+    parser.add_argument("--keywords", action="append", default=[], help="search keywords (repeatable)")
+    parser.add_argument("--country", action="append", default=[], help="ISO-2 country code (repeatable)")
     args = parser.parse_args(argv)
+    try:
+        spec = SearchSpec(keywords=args.keywords, countries=args.country)
+    except ValueError as exc:
+        print(f"Bad search options: {exc}", file=sys.stderr)
+        return 1
 
     try:
         companies = {c.slug: c for c in load_registry(args.path)}
@@ -63,7 +77,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     report_blocked(company)
     try:
-        jobs = asyncio.run(_run(company, args.limit))
+        jobs = asyncio.run(_run(company, spec, args.limit))
+    except ScopeError as exc:
+        print(f"Search scope: {exc}", file=sys.stderr)
+        return 1
     except UnsupportedPlatformError as exc:
         print(f"Not supported yet: {exc}", file=sys.stderr)
         return 1

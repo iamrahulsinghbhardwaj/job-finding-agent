@@ -26,6 +26,8 @@ companies:
     sources:
       - platform: amazon
         tenant: amazon.jobs
+        extra:
+          categories: [software-development]  # always scoped: one search caps at 10,000 results
 
   - slug: stripe
     name: Stripe

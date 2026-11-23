@@ -90,5 +90,6 @@ def test_committed_registry_is_valid() -> None:
     assert microsoft.extra["host"] == "apply.careers.microsoft.com"
     assert companies["microsoft"].active_sources == []
     assert companies["amazon"].sources[0].tenant == "amazon.jobs"
+    assert companies["amazon"].sources[0].extra == {"categories": ["software-development"]}
     assert companies["stripe"].india_presence is False
     assert companies["stripe"].europe_presence is True

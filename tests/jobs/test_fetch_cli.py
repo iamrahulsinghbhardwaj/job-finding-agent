@@ -16,6 +16,8 @@ BOARD = json.loads((FIXTURES / "greenhouse_stripe.json").read_text(encoding="utf
 LEVER_BOARD = json.loads((FIXTURES / "lever_palantir.json").read_text(encoding="utf-8"))
 ASHBY_URL = "https://api.ashbyhq.com/posting-api/job-board/openai"
 ASHBY_BOARD = json.loads((FIXTURES / "ashby_openai.json").read_text(encoding="utf-8"))
+AMAZON_URL = "https://www.amazon.jobs/en/search.json"
+AMAZON_PAGE = json.loads((FIXTURES / "amazon_india_sde.json").read_text(encoding="utf-8"))
 
 
 @respx.mock
@@ -40,9 +42,40 @@ def test_unknown_company_exits_1(capsys: pytest.CaptureFixture[str]) -> None:
     assert "Known: amazon, microsoft, openai, palantir, stripe" in capsys.readouterr().err
 
 
-def test_platform_without_adapter_exits_1(capsys: pytest.CaptureFixture[str]) -> None:
+def test_platform_without_adapter_exits_1(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    registry = tmp_path / "companies.yaml"
+    registry.write_text(
+        "companies:\n  - {slug: acme, name: Acme, tier: OTHER, india_presence: true, europe_presence: false,"
+        " us_transfer_path: false, sources: [{platform: custom, tenant: acme.com}]}\n"
+    )
+    assert main(["--company", "acme", "--path", str(registry)]) == 1
+    assert "no adapter for platform 'custom'" in capsys.readouterr().err
+
+
+@respx.mock
+def test_amazon_with_country_and_keywords(capsys: pytest.CaptureFixture[str]) -> None:
+    route = respx.get(AMAZON_URL).mock(return_value=httpx.Response(200, json=AMAZON_PAGE))
+    args = ["--company", "amazon", "--country", "IN", "--keywords", "Software Development Engineer"]
+    assert main([*args, "--limit", "2", "--path", REGISTRY]) == 0
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert lines[0] == (
+        "Software Dev Engineer II, Amazon, Selection Monitoring | Bengaluru, Karnataka, IND | "
+        "https://www.amazon.jobs/en/jobs/10611406/software-dev-engineer-ii-amazon-selection-monitoring"
+    )
+    assert lines[-1] == "2 jobs"
+    params = dict(route.calls.last.request.url.params.multi_items())
+    assert params["normalized_country_code[]"] == "IND"
+    assert params["base_query"] == "Software Development Engineer"
+
+
+def test_amazon_without_country_exits_1(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["--company", "amazon", "--path", REGISTRY]) == 1
-    assert "no adapter for platform 'amazon'" in capsys.readouterr().err
+    assert "need at least one country" in capsys.readouterr().err
+
+
+def test_bad_country_code_exits_1(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["--company", "amazon", "--country", "India", "--path", REGISTRY]) == 1
+    assert "Bad search options" in capsys.readouterr().err
 
 
 @respx.mock(assert_all_called=False)

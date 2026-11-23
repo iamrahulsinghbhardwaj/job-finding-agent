@@ -14,7 +14,7 @@
 import asyncio
 import http.cookiejar
 import time
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -30,7 +30,9 @@ from jobagent import __version__
 USER_AGENT = f"jobagent/{__version__} (+https://github.com/iamrahulsinghbhardwaj/job-finding-agent)"
 MAX_RETRY_AFTER = 60.0
 
-Params = Mapping[str, str | int | float | bool] | None
+_Scalar = str | int | float | bool
+# A mapping, or a sequence of pairs when a key repeats (e.g. category[]=a&category[]=b).
+Params = Mapping[str, _Scalar] | Sequence[tuple[str, _Scalar]] | None
 Clock = Callable[[], float]
 Sleep = Callable[[float], Awaitable[None]]
 
@@ -164,7 +166,7 @@ class PoliteClient:
             await self._wait_turn(state)
             state.stats.requests += 1
             try:
-                response = await self._client.get(url, params=params)
+                response = await self._client.get(url, params=_query(params))
             except httpx.TransportError as exc:  # timeouts, connection errors, protocol errors
                 raise TransientError(f"{type(exc).__name__} from {host}", host=host) from None
         return self._check_status(response, host)
@@ -204,6 +206,12 @@ class PoliteClient:
     @staticmethod
     def _count_retry(state: _DomainState) -> None:
         state.stats.retries += 1
+
+
+def _query(params: Params) -> httpx.QueryParams | None:
+    if params is None:
+        return None
+    return httpx.QueryParams(params if isinstance(params, Mapping) else list(params))
 
 
 def _parse_retry_after(value: str | None) -> float | None:

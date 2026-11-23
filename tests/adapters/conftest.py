@@ -61,3 +61,20 @@ def openai() -> Company:
         us_transfer_path=True,
         sources=[SourceConfig(platform=Platform.ASHBY, tenant="openai")],
     )
+
+
+@pytest.fixture
+def amazon() -> Company:
+    return Company(
+        slug="amazon",
+        name="Amazon",
+        tier=Tier.T1,
+        india_presence=True,
+        europe_presence=True,
+        us_transfer_path=True,
+        sources=[
+            SourceConfig(
+                platform=Platform.AMAZON, tenant="amazon.jobs", extra={"categories": ["software-development"]}
+            )
+        ],
+    )

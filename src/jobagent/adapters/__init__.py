@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 
+from jobagent.adapters.amazon import AmazonSource
 from jobagent.adapters.ashby import AshbySource
 from jobagent.adapters.greenhouse import GreenhouseSource
 from jobagent.adapters.lever import LeverSource
@@ -15,6 +16,7 @@ ADAPTERS: dict[Platform, SourceFactory] = {
     Platform.GREENHOUSE: GreenhouseSource,
     Platform.LEVER: LeverSource,
     Platform.ASHBY: AshbySource,
+    Platform.AMAZON: AmazonSource,
 }
 
 
