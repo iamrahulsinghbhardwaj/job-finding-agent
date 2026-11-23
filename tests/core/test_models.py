@@ -12,6 +12,7 @@ from jobagent.core.models import (
     RawJob,
     SearchSpec,
     SourceConfig,
+    SourceStatus,
     Tier,
 )
 
@@ -151,3 +152,37 @@ def test_models_are_frozen() -> None:
     source = SourceConfig(platform=Platform.LEVER, tenant="x")
     with pytest.raises(ValidationError):
         source.tenant = "y"  # pyright: ignore[reportAttributeAccessIssue]
+
+
+# --- source status ----------------------------------------------------------
+
+
+def test_source_defaults_to_active() -> None:
+    source = SourceConfig(platform=Platform.LEVER, tenant="x")
+    assert source.status is SourceStatus.ACTIVE
+    assert source.blocked_reason is None
+
+
+def test_blocked_source_needs_reason() -> None:
+    blocked = SourceConfig.model_validate(
+        {"platform": "eightfold", "tenant": "x", "status": "blocked", "blocked_reason": "403 on 2026-11-23"}
+    )
+    assert blocked.status is SourceStatus.BLOCKED
+    with pytest.raises(ValidationError, match="needs a blocked_reason"):
+        SourceConfig.model_validate({"platform": "eightfold", "tenant": "x", "status": "blocked"})
+    with pytest.raises(ValidationError, match="only allowed when status is blocked"):
+        SourceConfig.model_validate({"platform": "lever", "tenant": "x", "blocked_reason": "why?"})
+    with pytest.raises(ValidationError):
+        SourceConfig.model_validate({"platform": "lever", "tenant": "x", "status": "paused"})
+
+
+def test_active_sources_skips_blocked() -> None:
+    company = Company.model_validate(
+        company_data(
+            sources=[
+                {"platform": "eightfold", "tenant": "a", "status": "blocked", "blocked_reason": "429"},
+                {"platform": "greenhouse", "tenant": "b"},
+            ]
+        )
+    )
+    assert [s.tenant for s in company.active_sources] == ["b"]

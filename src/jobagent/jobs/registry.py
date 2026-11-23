@@ -8,21 +8,24 @@ from pathlib import Path
 from jobagent.core.models import Company
 from jobagent.core.registry import RegistryError, load_registry
 
-COLUMNS = ("slug", "tier", "platform", "tenant")
+COLUMNS = ("slug", "tier", "platform", "tenant", "status")
+Row = tuple[str, str, str, str, str]
 
 
-def registry_rows(companies: list[Company]) -> list[tuple[str, str, str, str]]:
+def registry_rows(companies: list[Company]) -> list[Row]:
     """One row per source; companies without sources get a single row with '-'."""
-    rows: list[tuple[str, str, str, str]] = []
+    rows: list[Row] = []
     for company in companies:
         if not company.sources:
-            rows.append((company.slug, company.tier.value, "-", "-"))
+            rows.append((company.slug, company.tier.value, "-", "-", "-"))
         for source in company.sources:
-            rows.append((company.slug, company.tier.value, source.platform.value, source.tenant))
+            rows.append(
+                (company.slug, company.tier.value, source.platform.value, source.tenant, source.status.value)
+            )
     return rows
 
 
-def format_table(rows: list[tuple[str, str, str, str]]) -> str:
+def format_table(rows: list[Row]) -> str:
     widths = [max(len(cell) for cell in column) for column in zip(COLUMNS, *rows, strict=True)]
     lines = [COLUMNS, tuple("-" * w for w in widths), *rows]
     return "\n".join(_format_line(line, widths) for line in lines)

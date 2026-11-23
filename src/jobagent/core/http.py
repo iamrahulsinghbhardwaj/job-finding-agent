@@ -6,10 +6,13 @@
 - Retries timeouts, connection errors, 429 and 5xx with exponential backoff + jitter,
   honouring Retry-After. Never retries other 4xx; 403 raises BlockedError so the caller
   reports and stops (no workarounds).
+- Never stores or sends cookies (a reject-all cookie jar), so a site that needs cookies
+  fails visibly instead of silently working through a session.
 - Error messages carry status and host only, never response bodies (logs are public).
 """
 
 import asyncio
+import http.cookiejar
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field, replace
@@ -30,6 +33,16 @@ MAX_RETRY_AFTER = 60.0
 Params = Mapping[str, str | int | float | bool] | None
 Clock = Callable[[], float]
 Sleep = Callable[[float], Awaitable[None]]
+
+
+class _RejectAllCookies(http.cookiejar.DefaultCookiePolicy):
+    """Cookie policy that never accepts a cookie and never returns one."""
+
+    def set_ok(self, cookie: http.cookiejar.Cookie, request: Any) -> bool:
+        return False
+
+    def return_ok(self, cookie: http.cookiejar.Cookie, request: Any) -> bool:
+        return False
 
 
 class FetchError(Exception):
@@ -95,6 +108,7 @@ class PoliteClient:
             timeout=timeout,
             follow_redirects=True,
             headers={"User-Agent": USER_AGENT},
+            cookies=http.cookiejar.CookieJar(policy=_RejectAllCookies()),
         )
 
     async def __aenter__(self) -> Self:

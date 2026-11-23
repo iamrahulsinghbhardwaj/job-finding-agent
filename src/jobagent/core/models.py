@@ -35,12 +35,29 @@ class Platform(StrEnum):
     CUSTOM = "custom"
 
 
+class SourceStatus(StrEnum):
+    """Whether the crawler may fetch a source. Set by hand in companies.yaml."""
+
+    ACTIVE = "active"
+    BLOCKED = "blocked"  # the site refused automated access; never fetched, no workarounds
+
+
 class SourceConfig(_Model):
     """Where to fetch one company's jobs: a platform plus its tenant (board token or domain)."""
 
     platform: Platform
     tenant: NonEmptyStr
     extra: dict[str, Any] = Field(default_factory=dict)
+    status: SourceStatus = SourceStatus.ACTIVE
+    blocked_reason: str | None = None  # required when blocked: what was seen, and when
+
+    @model_validator(mode="after")
+    def _blocked_needs_reason(self) -> Self:
+        if self.status is SourceStatus.BLOCKED and not self.blocked_reason:
+            raise ValueError("a blocked source needs a blocked_reason")
+        if self.status is SourceStatus.ACTIVE and self.blocked_reason:
+            raise ValueError("blocked_reason is only allowed when status is blocked")
+        return self
 
 
 class Company(_Model):
@@ -52,6 +69,11 @@ class Company(_Model):
     us_transfer_path: bool
     # Empty is valid: startups are tracked even with no openings.
     sources: list[SourceConfig] = Field(default_factory=list)
+
+    @property
+    def active_sources(self) -> list[SourceConfig]:
+        """Sources the crawler may fetch (blocked ones are skipped)."""
+        return [s for s in self.sources if s.status is SourceStatus.ACTIVE]
 
 
 class SearchSpec(_Model):

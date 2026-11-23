@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from jobagent.core.models import Platform, Tier
+from jobagent.core.models import Platform, SourceStatus, Tier
 from jobagent.core.registry import RegistryError, load_registry
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -83,7 +83,12 @@ def test_committed_registry_is_valid() -> None:
     assert companies["palantir"].sources[0].platform is Platform.LEVER
     assert companies["openai"].tier is Tier.OTHER  # test entry for the Ashby adapter
     assert companies["openai"].sources[0].platform is Platform.ASHBY
-    assert companies["microsoft"].sources[0].platform is Platform.EIGHTFOLD
+    microsoft = companies["microsoft"].sources[0]
+    assert microsoft.platform is Platform.EIGHTFOLD
+    assert microsoft.status is SourceStatus.BLOCKED  # 429 + HTML + Set-Cookie, see companies.yaml
+    assert microsoft.blocked_reason
+    assert microsoft.extra["host"] == "apply.careers.microsoft.com"
+    assert companies["microsoft"].active_sources == []
     assert companies["amazon"].sources[0].tenant == "amazon.jobs"
     assert companies["stripe"].india_presence is False
     assert companies["stripe"].europe_presence is True

@@ -41,8 +41,18 @@ def test_unknown_company_exits_1(capsys: pytest.CaptureFixture[str]) -> None:
 
 
 def test_platform_without_adapter_exits_1(capsys: pytest.CaptureFixture[str]) -> None:
-    assert main(["--company", "microsoft", "--path", REGISTRY]) == 1
-    assert "eightfold" in capsys.readouterr().err
+    assert main(["--company", "amazon", "--path", REGISTRY]) == 1
+    assert "no adapter for platform 'amazon'" in capsys.readouterr().err
+
+
+@respx.mock(assert_all_called=False)
+def test_blocked_source_is_skipped_without_any_request(capsys: pytest.CaptureFixture[str]) -> None:
+    # respx.mock blocks all unmocked HTTP, so any request to Microsoft would fail this test.
+    assert main(["--company", "microsoft", "--path", REGISTRY]) == 0
+    out = capsys.readouterr().out
+    assert "Skipping blocked source eightfold (microsoft): 429 + HTML + Set-Cookie" in out
+    assert out.strip().endswith("0 jobs")
+    assert len(respx.calls) == 0
 
 
 def test_limit_must_be_positive() -> None:

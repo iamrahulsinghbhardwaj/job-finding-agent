@@ -213,3 +213,17 @@ def test_parse_retry_after() -> None:
     in_30s = format_datetime(datetime.now(UTC) + timedelta(seconds=30), usegmt=True)
     assert 25 <= (_parse_retry_after(in_30s) or 0) <= 30
     assert _parse_retry_after("Mon, 01 Jan 2001 00:00:00 GMT") == 0.0
+
+
+@respx.mock
+async def test_cookies_are_never_stored_or_sent(client: PoliteClient) -> None:
+    route = respx.get(URL).mock(
+        side_effect=[
+            httpx.Response(200, json={}, headers={"Set-Cookie": "session=abc123; Path=/"}),
+            httpx.Response(200, json={}),
+        ]
+    )
+    await client.get_json(URL)
+    await client.get_json(URL)
+    assert "cookie" not in route.calls[1].request.headers  # Set-Cookie was not sent back
+    assert list(client._client.cookies.jar) == []  # pyright: ignore[reportPrivateUsage]

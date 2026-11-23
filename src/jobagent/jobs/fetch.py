@@ -8,7 +8,7 @@ from pathlib import Path
 
 from jobagent.adapters import UnsupportedPlatformError, build_source
 from jobagent.core.http import BlockedError, FetchError, PoliteClient
-from jobagent.core.models import Company, RawJob, SearchSpec
+from jobagent.core.models import Company, RawJob, SearchSpec, SourceStatus
 from jobagent.core.registry import RegistryError, load_registry
 
 
@@ -19,10 +19,18 @@ def _positive_int(value: str) -> int:
     return number
 
 
+def report_blocked(company: Company) -> None:
+    """Blocked sources are never fetched; say so instead of silently returning nothing."""
+    for source in company.sources:
+        if source.status is SourceStatus.BLOCKED:
+            name = f"{source.platform.value} ({company.slug})"
+            print(f"Skipping blocked source {name}: {source.blocked_reason}")
+
+
 async def fetch_jobs(company: Company, limit: int, http: PoliteClient) -> list[RawJob]:
     spec = SearchSpec(keywords=[], countries=[])
     jobs: list[RawJob] = []
-    for source_config in company.sources:
+    for source_config in company.active_sources:
         source = build_source(company, source_config, http)
         async for job in source.search(spec, stop_at_job_id=None):
             jobs.append(job)
@@ -53,6 +61,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Unknown company {args.company!r}. Known: {', '.join(sorted(companies))}", file=sys.stderr)
         return 1
 
+    report_blocked(company)
     try:
         jobs = asyncio.run(_run(company, args.limit))
     except UnsupportedPlatformError as exc:

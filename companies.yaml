@@ -12,6 +12,10 @@ companies:
     sources:
       - platform: eightfold
         tenant: microsoft.com
+        extra:
+          host: apply.careers.microsoft.com
+        status: blocked
+        blocked_reason: "429 + HTML + Set-Cookie on first request, 2026-11-23"
 
   - slug: amazon
     name: Amazon
