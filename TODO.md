@@ -30,7 +30,7 @@ Design: [docs/HLD.md](docs/HLD.md)
 - [x] `pyproject.toml`, ruff, pytest, pre-commit
 - [ ] Neon Postgres project on the Free plan; `DATABASE_URL` secret
 - [ ] CV loader: download via SAS, extract text with `pypdf`, hash; rebuild ranking profile only when the hash changes
-- [ ] Alembic migrations: Company, Source, Job, Ranking, Run
+- [x] Alembic migrations: Company, Source, Job, Ranking, Run
 - [ ] OpenAI key as `OPENAI_API_KEY` secret + monthly budget cap in the OpenAI dashboard
 - [ ] Gmail API OAuth (send, compose drafts, read) → `GMAIL_TOKEN` secret
 - [ ] `.github/workflows/run.yml`: cron `30 2,12 * * *` + `workflow_dispatch`
@@ -50,14 +50,14 @@ Design: [docs/HLD.md](docs/HLD.md)
 - [x] Amazon adapter (`search.json`, split by category to stay under the 10,000 cap)
 - [ ] Contract tests per adapter against recorded responses
 - [ ] Incremental crawl: stop paging at the first job ID already stored
-- [ ] Per-domain rate limit, backoff retries, dead-letter table
+- [x] Per-domain rate limit, backoff retries, dead-letter table
 
 **Pipeline**
 - [ ] Normalize: location → ISO country code; title cleanup
-- [ ] Dedupe upsert on (company, source_job_id); `first_seen` / `last_seen`
+- [x] Dedupe upsert on (company, source_job_id); `first_seen` / `last_seen`
 - [ ] Rule filter: India + Europe hubs (incl. Copenhagen), title keywords, exclusions (Staff, Principal, Manager, Intern, Contract), 4–6 YOE
 - [ ] LLM ranker with Structured Outputs (score, fit, reason) + rule-score fallback
-- [ ] Mark jobs stale after 3 missed runs
+- [x] Mark jobs stale after 3 missed runs
 
 **Digest**
 - [ ] HTML template: Tier 1 India (all), Tier 1 Europe (top 10)
