@@ -116,15 +116,18 @@ def test_normalize_all_counts_unknowns_and_remote() -> None:
     ]
     jobs, stats = normalize_all(raws, source=SOURCE)
     assert [job.source_job_id for job in jobs] == ["1", "2", "3", "4", "5"]
-    assert stats == NormalizeStats(total=5, unknown_location=3, remote=2)
-    assert stats.unknown_share == 0.6
-    assert stats.as_counts() == {"normalized": 5, "unknown_location": 3, "remote": 2}
-    assert stats.summary() == "5 jobs, 3 unknown location (60.0%)"
+    # "London / Dublin" is known (two countries), not unknown; "N/A" and bare "Remote" are unknown
+    assert stats == NormalizeStats(total=5, unknown_location=2, multi_country=1, remote=2)
+    assert stats.unknown_share == 0.4
+    assert stats.as_counts() == {"normalized": 5, "unknown_location": 2, "multi_country": 1, "remote": 2}
+    assert stats.summary() == "5 jobs, 2 unknown location (40.0%)"
 
 
 def test_stats_add_up_across_sources() -> None:
-    total = NormalizeStats(10, 1, 2) + NormalizeStats(30, 1, 0)
-    assert total == NormalizeStats(total=40, unknown_location=2, remote=2)
+    total = NormalizeStats(total=10, unknown_location=1, multi_country=3, remote=2) + NormalizeStats(
+        total=30, unknown_location=1, multi_country=1
+    )
+    assert total == NormalizeStats(total=40, unknown_location=2, multi_country=4, remote=2)
     assert total.summary() == "40 jobs, 2 unknown location (5.0%)"
 
 

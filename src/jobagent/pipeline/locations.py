@@ -1,9 +1,15 @@
 """Map messy location strings ("Hyderabad, Telangana, IND", "Bangalore - Remote") to country/city/remote.
 
 Rules plus lookup tables, no guessing:
-- the string is split into tokens on , ; / | ( ) and spaced dashes;
-- "Remote" (alone, or glued on as in "US-Remote") sets the remote flag and is removed;
-- tokens are looked up as known cities (which imply their country) or country names / ISO-3 codes;
+- the string is split into tokens on , ; / | ( ), spaced dashes and the words "or" / "and";
+- "Remote" (alone, or glued on as in "US-Remote", "Remote in the US") sets the remote flag and is
+  removed; "Hybrid" is removed without setting it;
+- a token that is not known as a whole but has inner hyphens is split on them: "US-NYC",
+  "IN-Bengaluru", "US-SF-HQ", "Canada-Toronto";
+- tokens are looked up as known cities (which imply their country), country names / ISO-3 codes,
+  or provinces / US state names; a token that STARTS with a known city ("New York Privy HQ",
+  "Washington DC metro area") resolves to that city; anything else is ignored (e.g. "SEA", which
+  may be Seattle or Southeast Asia, and regions like "EMEA");
 - "<city>, <US state code>" is always the US city of that name ("Dublin, CA", "Dublin, OH" -> US),
   unless the code is the city's own country ("Bengaluru, IN", "Berlin, DE" are India and Germany);
 - other 2-letter tokens are ambiguous (IN = India or Indiana), so they count only when a city in
@@ -37,7 +43,7 @@ _CITY_TABLE: tuple[tuple[str, str, bool, tuple[str, ...]], ...] = (
     ("Stockholm", "SE", True, ("stockholm",)),
     ("Copenhagen", "DK", True, ("copenhagen", "k\u00f8benhavn", "kobenhavn")),
     # other tech cities (out of scope, but known)
-    ("San Francisco", "US", False, ("san francisco", "san francisco bay area", "sf")),
+    ("San Francisco", "US", False, ("san francisco", "san francisco bay area", "sf", "san francsico")),
     ("Palo Alto", "US", False, ("palo alto",)),
     ("Mountain View", "US", False, ("mountain view",)),
     ("Sunnyvale", "US", False, ("sunnyvale",)),
@@ -52,6 +58,25 @@ _CITY_TABLE: tuple[tuple[str, str, bool, tuple[str, ...]], ...] = (
     ("Tokyo", "JP", False, ("tokyo",)),
     ("Sydney", "AU", False, ("sydney",)),
     ("Tel Aviv", "IL", False, ("tel aviv", "tel aviv-yafo")),
+    ("Chicago", "US", False, ("chicago",)),
+    ("Atlanta", "US", False, ("atlanta",)),
+    ("Washington", "US", False, ("washington dc",)),
+    ("South San Francisco", "US", False, ("south san francisco", "ssf")),
+    ("Mexico City", "MX", False, ("mexico city", "cdmx", "ciudad de mexico")),
+    ("Sao Paulo", "BR", False, ("sao paulo", "s\u00e3o paulo")),
+    ("Seoul", "KR", False, ("seoul",)),
+    ("Taipei", "TW", False, ("taipei",)),
+    ("Melbourne", "AU", False, ("melbourne",)),
+    ("Auckland", "NZ", False, ("auckland",)),
+    ("Abu Dhabi", "AE", False, ("abu dhabi",)),
+    ("Paris", "FR", False, ("paris",)),
+    ("Madrid", "ES", False, ("madrid",)),
+    ("Barcelona", "ES", False, ("barcelona",)),
+    ("Brussels", "BE", False, ("brussels", "bruxelles")),
+    ("Luxembourg", "LU", False, ("luxembourg",)),
+    ("Munich", "DE", False, ("munich", "m\u00fcnchen")),
+    ("Bucharest", "RO", False, ("bucharest",)),
+    ("Vilnius", "LT", False, ("vilnius",)),
 )
 CITIES: dict[str, tuple[str, str]] = {
     alias: (name, country) for name, country, _, aliases in _CITY_TABLE for alias in aliases
@@ -80,6 +105,17 @@ COUNTRIES: dict[str, str] = {
     **dict.fromkeys(("israel", "isr"), "IL"),
     **dict.fromkeys(("brazil", "bra"), "BR"),
     **dict.fromkeys(("mexico", "mex"), "MX"),
+    **dict.fromkeys(("south korea", "korea", "republic of korea", "kor"), "KR"),
+    **dict.fromkeys(("taiwan", "twn"), "TW"),
+    **dict.fromkeys(("romania", "rou"), "RO"),
+    **dict.fromkeys(("belgium", "bel"), "BE"),
+    **dict.fromkeys(("new zealand", "nzl"), "NZ"),
+    **dict.fromkeys(("united arab emirates", "uae", "are"), "AE"),
+    **dict.fromkeys(("malaysia", "mys"), "MY"),
+    **dict.fromkeys(("lithuania", "ltu"), "LT"),
+    # provinces and US state names (only unambiguous ones: not "Georgia", not "Washington")
+    **dict.fromkeys(("ontario", "quebec", "british columbia", "alberta"), "CA"),
+    **dict.fromkeys(("illinois", "california", "texas", "massachusetts", "colorado", "new jersey"), "US"),
 }
 
 _US_STATE_CODES = (
@@ -88,9 +124,10 @@ _US_STATE_CODES = (
 )
 US_STATES = frozenset(_US_STATE_CODES.split())
 
-_SPLIT = re.compile(r"\s*[,;/|()]\s*|\s+[-\u2013\u2014]\s+")
-_REMOTE_PREFIX = re.compile(r"^remote\s*[-\u2013\u2014:]?\s*", re.IGNORECASE)
+_SPLIT = re.compile(r"\s*[,;/|()]\s*|\s+[-\u2013\u2014]\s+|\s+(?:or|and)\s+", re.IGNORECASE)
+_REMOTE_PREFIX = re.compile(r"^remote(?:\s+in(?:\s+the)?)?\s*[-\u2013\u2014:]?\s*", re.IGNORECASE)
 _REMOTE_SUFFIX = re.compile(r"\s*[-\u2013\u2014]?\s*remote$", re.IGNORECASE)
+_HYBRID = re.compile(r"^hybrid\b\s*[-\u2013\u2014:]?\s*|\s*[-\u2013\u2014]?\s*\bhybrid$", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -103,14 +140,16 @@ class Location:
 
 def parse_location(raw: str) -> Location:
     remote = False
-    tokens: list[str] = []
+    keys: list[str] = []
     for part in _SPLIT.split(raw):
         token, was_remote = _strip_remote(part.strip())
         remote = remote or was_remote
-        if token:
-            tokens.append(token)
+        for piece in _hyphen_pieces(token):
+            piece, was_remote = _strip_remote(piece)
+            remote = remote or was_remote
+            if key := _key(piece):
+                keys.append(key)
 
-    keys = [token.casefold().replace(".", "").strip() for token in tokens]
     found: list[str] = []
     city: tuple[str, str] | None = None
     codes: list[str] = []
@@ -127,6 +166,10 @@ def parse_location(raw: str) -> Location:
             _add(found, COUNTRIES[key])
         elif len(key) == 2 and key.isalpha():
             codes.append(key.upper())
+        elif prefixed := _city_prefix(key):  # "new york privy hq", "washington dc metro area"
+            name, city_country = CITIES[prefixed]
+            city = city or (name, city_country)
+            _add(found, city_country)
     for code in codes:
         if code in found:
             continue  # confirmed by a city or name ("Dublin, IE", "Hyderabad, TS, IN")
@@ -138,7 +181,31 @@ def parse_location(raw: str) -> Location:
     return Location(country=country, countries=tuple(found), city=city_name, remote=remote)
 
 
+def _key(token: str) -> str:
+    return " ".join(token.casefold().replace(".", "").split())
+
+
+def _known(key: str) -> bool:
+    return key in CITIES or key in COUNTRIES
+
+
+def _hyphen_pieces(token: str) -> list[str]:
+    """ "US-NYC" -> ["US", "NYC"]; a token known as a whole ("Tel Aviv-Yafo") is kept."""
+    if "-" not in token or _known(_key(token)):
+        return [token]
+    return [piece.strip() for piece in token.split("-") if piece.strip()]
+
+
+# Longest first, so "south san francisco hq" matches "south san francisco", not "san francisco".
+_CITY_PREFIXES = sorted(CITIES, key=len, reverse=True)
+
+
+def _city_prefix(key: str) -> str | None:
+    return next((alias for alias in _CITY_PREFIXES if key.startswith(alias + " ")), None)
+
+
 def _strip_remote(token: str) -> tuple[str, bool]:
+    token = _HYBRID.sub("", token).strip()
     if token.casefold() == "remote":
         return "", True
     for pattern in (_REMOTE_PREFIX, _REMOTE_SUFFIX):

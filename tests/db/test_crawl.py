@@ -165,6 +165,7 @@ async def test_one_failing_source_never_stops_the_others(session: Session, http:
         "capped_queries": 0,
         "normalized": 3,
         "unknown_location": 0,
+        "multi_country": 0,
         "remote": 0,
     }
     for slug in ("blocked403", "flaky", "buggy", "slow"):

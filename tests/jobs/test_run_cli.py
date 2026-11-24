@@ -14,9 +14,19 @@ def test_summary_table_groups_sources_by_company() -> None:
         run_id=7,
         outcomes=[
             SourceOutcome(
-                "amazon", "amazon:amazon.jobs", fetched=1200, new=40, stats=NormalizeStats(1200, 6, 0)
+                "amazon",
+                "amazon:amazon.jobs",
+                fetched=1200,
+                new=40,
+                stats=NormalizeStats(total=1200, unknown_location=6),
             ),
-            SourceOutcome("stripe", "greenhouse:stripe", fetched=20, new=20, stats=NormalizeStats(20, 2, 1)),
+            SourceOutcome(
+                "stripe",
+                "greenhouse:stripe",
+                fetched=20,
+                new=20,
+                stats=NormalizeStats(total=20, unknown_location=2, remote=1),
+            ),
             SourceOutcome("stripe", "lever:stripe", fetched=0, errors=1),
             SourceOutcome("microsoft", "eightfold:microsoft.com", blocked=True),
         ],
