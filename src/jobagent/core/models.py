@@ -50,6 +50,7 @@ class SourceConfig(_Model):
     extra: dict[str, Any] = Field(default_factory=dict)
     status: SourceStatus = SourceStatus.ACTIVE
     blocked_reason: str | None = None  # required when blocked: what was seen, and when
+    timeout_seconds: float | None = Field(default=None, gt=0, le=3600)  # None: the crawl default
 
     @model_validator(mode="after")
     def _blocked_needs_reason(self) -> Self:

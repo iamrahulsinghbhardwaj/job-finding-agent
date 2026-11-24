@@ -9,12 +9,14 @@ Unknown boards return 200 with no jobs rather than 404; health_check reports tha
 """
 
 from collections.abc import AsyncIterator
+from collections.abc import Set as AbstractSet
 from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import ValidationError
 
 from jobagent.adapters.common import html_to_text, schema_hash
+from jobagent.core.contracts import QueryLedger
 from jobagent.core.http import BlockedError, FetchError, PoliteClient
 from jobagent.core.models import Company, HealthReport, JobDetail, RawJob, SearchSpec, SourceConfig
 
@@ -24,6 +26,8 @@ _OLDEST = datetime.min.replace(tzinfo=UTC)
 
 
 class AshbySource:
+    full_listing = True  # one request returns the entire board
+
     def __init__(self, company: Company, source: SourceConfig, http: PoliteClient) -> None:
         self._company = company
         self._tenant = source.tenant
@@ -36,10 +40,11 @@ class AshbySource:
     def _board_url(self) -> str:
         return f"{BASE_URL}/{self._tenant}"
 
-    async def search(self, spec: SearchSpec, stop_at_job_id: str | None) -> AsyncIterator[RawJob]:
+    async def search(
+        self, spec: SearchSpec, known_job_ids: AbstractSet[str], ledger: QueryLedger | None = None
+    ) -> AsyncIterator[RawJob]:
+        # The whole board comes back in one request: known ids and the ledger save nothing.
         for job in await self._fetch_jobs():
-            if job.source_job_id == stop_at_job_id:
-                return
             yield job
 
     async def get_details(self, job_id: str) -> JobDetail:

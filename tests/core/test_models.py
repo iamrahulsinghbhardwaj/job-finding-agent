@@ -186,3 +186,13 @@ def test_active_sources_skips_blocked() -> None:
         )
     )
     assert [s.tenant for s in company.active_sources] == ["b"]
+
+
+@pytest.mark.parametrize("seconds", [0, -5, 3601])
+def test_source_timeout_must_be_sane(seconds: float) -> None:
+    with pytest.raises(ValidationError):
+        SourceConfig(platform=Platform.AMAZON, tenant="amazon.jobs", timeout_seconds=seconds)
+
+
+def test_source_timeout_defaults_to_none() -> None:
+    assert SourceConfig(platform=Platform.LEVER, tenant="x").timeout_seconds is None

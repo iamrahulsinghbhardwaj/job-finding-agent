@@ -9,9 +9,11 @@ from alembic.migration import MigrationContext
 from sqlalchemy import MetaData, select, text
 from sqlalchemy.orm import Session
 
+from jobagent.core import models as core
 from jobagent.core.models import RawJob
 from jobagent.db import repo
 from jobagent.db.models import Base, Company, DeadLetter, Job, Run, Source
+from jobagent.pipeline.normalize import normalize
 from tests.db.conftest import DbHandle, needs_db
 
 pytestmark = needs_db
@@ -47,7 +49,11 @@ def jobs_of(session: Session, source: Source) -> dict[str, Job]:
 def upsert(
     session: Session, run_id: int, source: Source, jobs: list[RawJob], complete: bool = True
 ) -> set[int]:
-    return repo.upsert_jobs(session, run_id=run_id, source_id=source.id, jobs=jobs, complete=complete)
+    normalized = [normalize(job, source="test") for job in jobs]
+    sample = jobs[0].raw if jobs else None
+    return repo.upsert_jobs(
+        session, run_id=run_id, source_id=source.id, jobs=normalized, complete=complete, raw_sample=sample
+    )
 
 
 # --- upsert_jobs -------------------------------------------------------------
@@ -108,21 +114,97 @@ def test_raw_sample_stored_on_source(session: Session) -> None:
     assert source.raw_sample == {"id": "7"}
 
 
+def test_normalized_location_is_stored(session: Session) -> None:
+    source = make_company(session)
+    upsert(session, repo.start_run(session), source, [raw("1")])  # location "Bengaluru"
+    stored = jobs_of(session, source)["1"]
+    assert (stored.country, stored.city) == ("IN", "Bengaluru")
+
+
 def test_large_batch_is_chunked(session: Session) -> None:
     source = make_company(session)
     jobs = [raw(str(i)) for i in range(1, 1201)]
     assert len(upsert(session, repo.start_run(session), source, jobs)) == 1200
 
 
-# --- latest_seen_job_id ----------------------------------------------------------
+# --- known_job_ids ---------------------------------------------------------------
 
 
-def test_latest_seen_job_id(session: Session) -> None:
+def test_known_job_ids(session: Session) -> None:
     source = make_company(session)
-    assert repo.latest_seen_job_id(session, source.id) is None
-    jobs = [raw("old", day=1), raw("newest", day=9), raw("mid", day=5)]
-    upsert(session, repo.start_run(session), source, jobs)
-    assert repo.latest_seen_job_id(session, source.id) == "newest"
+    other = make_company(session, "plaid")
+    assert repo.known_job_ids(session, source.id) == frozenset()
+    upsert(session, repo.start_run(session), source, [raw("1"), raw("2")])
+    upsert(session, repo.start_run(session), other, [raw("9", slug="plaid")])
+    assert repo.known_job_ids(session, source.id) == {"1", "2"}  # only this source's jobs
+
+
+# --- sync_registry --------------------------------------------------------------
+
+
+def registry_company(**changes: Any) -> core.Company:
+    data: dict[str, Any] = {
+        "slug": "amazon",
+        "name": "Amazon",
+        "tier": "T1",
+        "india_presence": True,
+        "europe_presence": True,
+        "us_transfer_path": True,
+        "sources": [
+            {
+                "platform": "amazon",
+                "tenant": "amazon.jobs",
+                "extra": {"categories": ["software-development"]},
+            },
+            {"platform": "greenhouse", "tenant": "amazon-gh"},
+        ],
+    }
+    return core.Company.model_validate(data | changes)
+
+
+def test_sync_registry_inserts_companies_and_sources(session: Session) -> None:
+    ids = repo.sync_registry(session, [registry_company()])
+    assert set(ids) == {("amazon", "amazon", "amazon.jobs"), ("amazon", "greenhouse", "amazon-gh")}
+    amazon = session.get(Source, ids[("amazon", "amazon", "amazon.jobs")])
+    assert amazon is not None
+    assert (amazon.kind, amazon.status, amazon.tenant_config) == (
+        "custom",
+        "active",
+        {"categories": ["software-development"]},
+    )
+    greenhouse = session.get(Source, ids[("amazon", "greenhouse", "amazon-gh")])
+    assert greenhouse is not None
+    assert greenhouse.kind == "platform"
+    company = session.execute(select(Company).where(Company.slug == "amazon")).scalar_one()
+    assert (company.tier, company.source_list, company.india_presence) == ("T1", "registry", True)
+
+
+def test_sync_registry_is_idempotent_and_registry_wins(session: Session) -> None:
+    first = repo.sync_registry(session, [registry_company()])
+    blocked = registry_company(
+        name="Amazon.com",
+        tier="OTHER",
+        sources=[
+            {
+                "platform": "amazon",
+                "tenant": "amazon.jobs",
+                "extra": {"categories": ["software-development"]},
+                "status": "blocked",
+                "blocked_reason": "403 on first request",
+            }
+        ],
+    )
+    second = repo.sync_registry(session, [blocked])
+    key = ("amazon", "amazon", "amazon.jobs")
+    assert second[key] == first[key]  # same row, updated in place
+    session.expire_all()
+    source = session.get(Source, second[key])
+    assert source is not None
+    assert (source.status, source.blocked_reason) == ("blocked", "403 on first request")
+    company = session.execute(select(Company).where(Company.slug == "amazon")).scalar_one()
+    assert (company.name, company.tier) == ("Amazon.com", "OTHER")
+    # the source dropped from the YAML is kept (history), not deleted
+    assert session.get(Source, first[("amazon", "greenhouse", "amazon-gh")]) is not None
 
 
 # --- staleness -----------------------------------------------------------------
@@ -240,4 +322,4 @@ def test_migration_created_version_row(test_db: DbHandle) -> None:
     with test_db.engine.connect() as conn:
         query = text(f'SELECT version_num FROM "{test_db.schema}".alembic_version')
         version = conn.execute(query).scalar_one()
-    assert version == "0001"
+    assert version == "0002"

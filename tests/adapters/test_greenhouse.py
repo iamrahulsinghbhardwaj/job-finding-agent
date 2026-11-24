@@ -28,8 +28,8 @@ def source(stripe: Company, http: PoliteClient) -> GreenhouseSource:
     return GreenhouseSource(stripe, stripe.sources[0], http)
 
 
-async def collect(source: JobSource, stop_at: str | None = None) -> list[str]:
-    return [job.source_job_id async for job in source.search(SPEC, stop_at)]
+async def collect(source: JobSource, known: frozenset[str] = frozenset()) -> list[str]:
+    return [job.source_job_id async for job in source.search(SPEC, known)]
 
 
 def test_satisfies_protocol(source: GreenhouseSource) -> None:
@@ -43,7 +43,7 @@ def test_satisfies_protocol(source: GreenhouseSource) -> None:
 @respx.mock
 async def test_maps_fields(source: GreenhouseSource, board: dict[str, object]) -> None:
     respx.get(LIST_URL).mock(return_value=httpx.Response(200, json=board))
-    jobs = {job.source_job_id: job async for job in source.search(SPEC, None)}
+    jobs = {job.source_job_id: job async for job in source.search(SPEC, frozenset())}
     assert len(jobs) == 20
 
     job = jobs["8315954"]
@@ -65,7 +65,7 @@ async def test_orders_newest_first_by_first_published(
     source: GreenhouseSource, board: dict[str, object]
 ) -> None:
     respx.get(LIST_URL).mock(return_value=httpx.Response(200, json=board))
-    jobs = [job async for job in source.search(SPEC, None)]
+    jobs = [job async for job in source.search(SPEC, frozenset())]
     assert [j.source_job_id for j in jobs[:6]] == NEWEST_IDS
     dates = [j.posted_at for j in jobs if j.posted_at is not None]
     assert len(dates) == 20
@@ -91,17 +91,20 @@ async def test_falls_back_to_updated_at(source: GreenhouseSource, board: dict[st
     assert isinstance(jobs, list)
     del jobs[0]["first_published"]
     respx.get(LIST_URL).mock(return_value=httpx.Response(200, json={"jobs": jobs[:1]}))
-    (job,) = [j async for j in source.search(SPEC, None)]
+    (job,) = [j async for j in source.search(SPEC, frozenset())]
     assert job.posted_at == datetime.fromisoformat(jobs[0]["updated_at"])
 
 
 @respx.mock
-async def test_stop_at_behaviour(source: GreenhouseSource, board: dict[str, object]) -> None:
+async def test_known_ids_are_ignored_full_board_every_time(
+    source: GreenhouseSource, board: dict[str, object]
+) -> None:
     route = respx.get(LIST_URL).mock(return_value=httpx.Response(200, json=board))
-    assert await collect(source, NEWEST_IDS[4]) == NEWEST_IDS[:4]  # stops before the stored job
-    assert await collect(source, NEWEST_IDS[0]) == []  # nothing new
-    assert len(await collect(source, "999")) == 20  # unknown id -> everything
-    assert route.call_count == 3  # one request per search: whole board, no paging
+    everything = await collect(source)
+    assert len(everything) == 20
+    assert await collect(source, frozenset(everything)) == everything  # all known: still the full board
+    assert source.full_listing
+    assert route.call_count == 2  # one request per search: whole board, no paging
 
 
 @respx.mock

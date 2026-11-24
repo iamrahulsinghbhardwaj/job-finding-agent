@@ -39,7 +39,7 @@ Design: [docs/HLD.md](docs/HLD.md)
 
 **Registry**
 - [ ] `companies.yaml` seed: ~50 Tier 1 with careers URL, platform, India/Europe presence, `us_transfer_path`
-- [ ] Loader that upserts the registry into the DB
+- [x] Loader that upserts the registry into the DB
 
 **Adapters**
 - [x] `JobSource` protocol + `SearchSpec`, `RawJob`, `JobDetail`, `HealthReport` models
@@ -49,7 +49,8 @@ Design: [docs/HLD.md](docs/HLD.md)
 - [ ] Eightfold adapter (Microsoft, Netflix): `pcsx/search` + `pcsx/position_details`
 - [x] Amazon adapter (`search.json`, split by category to stay under the 10,000 cap)
 - [ ] Contract tests per adapter against recorded responses
-- [ ] Incremental crawl: stop paging at the first job ID already stored
+- [x] Incremental crawl: paged sources stop a query at the first page of already-stored ids (`max_pages` hard cap); board sources fetch the whole board
+- [ ] Weekly full crawl for paged sources (Amazon) with `complete=True`, so their closed jobs go stale
 - [x] Per-domain rate limit, backoff retries, dead-letter table
 
 **Pipeline**
@@ -62,7 +63,7 @@ Design: [docs/HLD.md](docs/HLD.md)
 
 **Digest**
 - [ ] HTML template: Tier 1 India (all), Tier 1 Europe (top 10); show the ORIGINAL title (`title`), never `title_canonical`
-- [ ] Run summary: include `NormalizeStats.as_counts()` per source in `Run.per_source_counts` (unknown-location share, target < 5%)
+- [x] Run summary: include `NormalizeStats.as_counts()` per source in `Run.per_source_counts` (unknown-location share, target < 5%)
 - [ ] Send via Gmail; idempotent via `Run.emailed_job_ids`; no email when nothing is new
 - [ ] **Gate:** 7 consecutive scheduled runs, 0 duplicate emails
 

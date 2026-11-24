@@ -1,4 +1,4 @@
-"""Load and validate the company registry (companies.yaml)."""
+"""Load and validate the company registry (companies.yaml): companies and per-tier search scope."""
 
 from collections import defaultdict
 from pathlib import Path
@@ -7,7 +7,7 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
-from jobagent.core.models import Company
+from jobagent.core.models import Company, SearchSpec, Tier
 
 
 class RegistryError(ValueError):
@@ -22,7 +22,31 @@ def load_registry(path: Path) -> list[Company]:
     return companies
 
 
-def _read_entries(path: Path) -> list[Any]:
+def load_search_specs(path: Path) -> dict[Tier, SearchSpec]:
+    """Parse the top-level `search:` block: one SearchSpec (countries, keywords, max_pages) per tier.
+
+    Every tier must be present, so a run never falls back to a silent default scope.
+    """
+    block = _read_yaml(path).get("search")
+    if not isinstance(block, dict):
+        raise RegistryError(f"{path}: expected a top-level 'search:' mapping of tier -> scope")
+    unknown = set(block) - {tier.value for tier in Tier}
+    if unknown:
+        raise RegistryError(f"{path}: search: unknown tiers {sorted(map(str, unknown))}")
+    specs: dict[Tier, SearchSpec] = {}
+    for tier in Tier:
+        entry = block.get(tier.value)
+        if not isinstance(entry, dict):
+            raise RegistryError(f"{path}: search.{tier.value}: missing (every tier needs a scope)")
+        try:
+            specs[tier] = SearchSpec.model_validate({"keywords": [], **entry})
+        except ValidationError as exc:
+            problems = "; ".join(f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in exc.errors())
+            raise RegistryError(f"{path}: search.{tier.value}: {problems}") from None
+    return specs
+
+
+def _read_yaml(path: Path) -> dict[str, Any]:
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -31,7 +55,12 @@ def _read_entries(path: Path) -> list[Any]:
         data = yaml.safe_load(text)
     except yaml.YAMLError as exc:
         raise RegistryError(f"{path}: invalid YAML: {exc}") from None
-    if not isinstance(data, dict) or not isinstance(data.get("companies"), list):
+    return data if isinstance(data, dict) else {}  # callers report the missing top-level key
+
+
+def _read_entries(path: Path) -> list[Any]:
+    data = _read_yaml(path)
+    if not isinstance(data.get("companies"), list):
         raise RegistryError(f"{path}: expected a top-level 'companies:' list")
     return data["companies"]
 

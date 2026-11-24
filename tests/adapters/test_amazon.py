@@ -1,4 +1,6 @@
+import asyncio
 import copy
+from collections.abc import Set as AbstractSet
 from datetime import UTC, datetime
 from typing import Any
 
@@ -8,7 +10,7 @@ import respx
 
 from jobagent.adapters.amazon import AmazonSource
 from jobagent.adapters.common import ScopeError
-from jobagent.core.contracts import JobSource
+from jobagent.core.contracts import JobSource, QueryLedger
 from jobagent.core.http import BlockedError, FetchError, PoliteClient
 from jobagent.core.models import Company, Platform, SearchSpec, SourceConfig
 from tests.adapters.conftest import load_fixture
@@ -46,8 +48,13 @@ def params_of(route: respx.Route, call: int) -> list[tuple[str, str]]:
     return list(route.calls[call].request.url.params.multi_items())
 
 
-async def collect(source: JobSource, spec: SearchSpec = SPEC, stop_at: str | None = None) -> list[str]:
-    return [job.source_job_id async for job in source.search(spec, stop_at)]
+async def collect(
+    source: JobSource,
+    spec: SearchSpec = SPEC,
+    known: AbstractSet[str] = frozenset(),
+    ledger: QueryLedger | None = None,
+) -> list[str]:
+    return [job.source_job_id async for job in source.search(spec, known, ledger)]
 
 
 def test_satisfies_protocol(source: AmazonSource) -> None:
@@ -61,7 +68,7 @@ def test_satisfies_protocol(source: AmazonSource) -> None:
 @respx.mock
 async def test_maps_fields(source: AmazonSource, page: dict[str, Any]) -> None:
     respx.get(SEARCH_URL).mock(return_value=httpx.Response(200, json=page))
-    jobs = {job.source_job_id: job async for job in source.search(SPEC, None)}
+    jobs = {job.source_job_id: job async for job in source.search(SPEC, frozenset())}
     assert len(jobs) == 20
 
     job = jobs["10611406"]  # public job number, as in the URL
@@ -81,7 +88,7 @@ async def test_maps_fields(source: AmazonSource, page: dict[str, Any]) -> None:
 @respx.mock
 async def test_orders_by_posted_date_then_job_number(source: AmazonSource, page: dict[str, Any]) -> None:
     respx.get(SEARCH_URL).mock(return_value=httpx.Response(200, json=page))
-    jobs = [job async for job in source.search(SPEC, None)]
+    jobs = [job async for job in source.search(SPEC, frozenset())]
     assert [j.source_job_id for j in jobs[:5]] == NEWEST_IDS
     assert jobs[-1].source_job_id == OLDEST_ID
     keys = [(j.posted_at, int(j.source_job_id)) for j in jobs if j.posted_at is not None]
@@ -160,26 +167,199 @@ async def test_stops_at_max_pages(source: AmazonSource, page: dict[str, Any]) ->
     assert route.call_count == 2
 
 
-@respx.mock
-async def test_stop_at_does_not_cut_paging_short(source: AmazonSource, page: dict[str, Any]) -> None:
-    # sort=recent is not strictly newest first, so a stored id on page 1 must not stop paging:
-    # newer jobs can sit on page 2.
-    first = made_up_page(page, 100, 20_000_000)
-    second = made_up_page(page, 5, 30_000_000)  # higher job numbers = newer, on the LAST page
-    route = respx.get(SEARCH_URL).mock(
-        side_effect=[httpx.Response(200, json=first), httpx.Response(200, json=second)]
+# --- incremental paging: stop at the first fully known page, per query ---------------
+
+
+def page_with_ids(page: dict[str, Any], ids: list[int]) -> dict[str, Any]:
+    template = page["jobs"][0]
+    jobs = []
+    for number in ids:
+        job = copy.deepcopy(template)
+        job |= {"id_icims": str(number), "id": f"uuid-{number}", "job_path": f"/en/jobs/{number}/x"}
+        jobs.append(job)
+    return page | {"jobs": jobs, "hits": len(ids)}
+
+
+class FakeAmazon:
+    """Serves one catalogue (newest first) per (country, category) query, paged like Amazon."""
+
+    def __init__(self, page: dict[str, Any], catalogues: dict[tuple[str, str], list[int]]) -> None:
+        self.page = page
+        self.catalogues = catalogues
+        self.pages: dict[tuple[str, str], int] = dict.fromkeys(catalogues, 0)  # requests per query
+        self.hang_at: tuple[tuple[str, str], int] | None = None  # (query, request number): hang there
+
+    async def __call__(self, request: httpx.Request) -> httpx.Response:
+        params = request.url.params
+        query = (params["normalized_country_code[]"], params["category[]"])
+        self.pages[query] += 1
+        if self.hang_at == (query, self.pages[query]):
+            await asyncio.sleep(60)  # a slow site: the caller's timeout fires first
+        offset, limit = int(params["offset"]), int(params["result_limit"])
+        ids = self.catalogues[query][offset : offset + limit]
+        return httpx.Response(200, json=page_with_ids(self.page, ids))
+
+
+@pytest.fixture
+def two_category_source(amazon: Company, http: PoliteClient) -> AmazonSource:
+    config = SourceConfig(
+        platform=Platform.AMAZON,
+        tenant="amazon.jobs",
+        extra={"categories": ["software-development", "machine-learning-science"]},
     )
-    ids = await collect(source, stop_at="20000099")
-    assert route.call_count == 2  # kept paging past the page containing stop_at
-    assert ids == ["30000004", "30000003", "30000002", "30000001", "30000000"]
+    return AmazonSource(amazon, config, http)
+
+
+def catalogues() -> dict[tuple[str, str], list[int]]:
+    return {
+        ("IND", "software-development"): list(range(10_350, 10_000, -1)),  # 350 jobs
+        ("IND", "machine-learning-science"): list(range(20_150, 20_000, -1)),  # 150
+        ("IRL", "software-development"): list(range(30_250, 30_000, -1)),  # 250
+        ("IRL", "machine-learning-science"): list(range(40_050, 40_000, -1)),  # 50
+    }
+
+
+MULTI_SPEC = SearchSpec(keywords=[], countries=["IN", "IE"], max_pages=3)
 
 
 @respx.mock
-async def test_stop_at_behaviour(source: AmazonSource, page: dict[str, Any]) -> None:
+async def test_one_query_per_country_and_category(
+    two_category_source: AmazonSource, page: dict[str, Any]
+) -> None:
+    server = FakeAmazon(page, catalogues())
+    respx.get(SEARCH_URL).mock(side_effect=server)
+    await collect(two_category_source, MULTI_SPEC)
+    assert set(server.pages) == {
+        ("IND", "software-development"),
+        ("IND", "machine-learning-science"),
+        ("IRL", "software-development"),
+        ("IRL", "machine-learning-science"),
+    }
+    assert all(count >= 1 for count in server.pages.values())
+
+
+@respx.mock
+async def test_first_run_pages_to_the_cap_or_the_end(
+    two_category_source: AmazonSource, page: dict[str, Any]
+) -> None:
+    server = FakeAmazon(page, catalogues())
+    respx.get(SEARCH_URL).mock(side_effect=server)
+    ids = await collect(two_category_source, MULTI_SPEC)  # nothing known yet
+    assert server.pages == {
+        ("IND", "software-development"): 3,  # 350 jobs: stopped by max_pages=3 (hard cap)
+        ("IND", "machine-learning-science"): 2,  # 100 + a short page of 50
+        ("IRL", "software-development"): 3,  # 100 + 100 + a short page of 50
+        ("IRL", "machine-learning-science"): 1,  # one short page
+    }
+    assert len(ids) == 300 + 150 + 250 + 50
+
+
+IND_SW = "|IND|software-development"
+ALL_QUERIES = {
+    IND_SW,
+    "|IND|machine-learning-science",
+    "|IRL|software-development",
+    "|IRL|machine-learning-science",
+}
+
+
+async def first_pass(source: AmazonSource) -> tuple[frozenset[str], QueryLedger]:
+    ledger = QueryLedger()
+    known = frozenset(await collect(source, MULTI_SPEC, ledger=ledger))
+    return known, QueryLedger(backfilled=ledger.updated_backfilled())
+
+
+@respx.mock
+async def test_completed_pass_backfills_every_query_and_counts_caps(
+    two_category_source: AmazonSource, page: dict[str, Any]
+) -> None:
+    respx.get(SEARCH_URL).mock(side_effect=FakeAmazon(page, catalogues()))
+    ledger = QueryLedger()
+    await collect(two_category_source, MULTI_SPEC, ledger=ledger)
+    assert ledger.updated_backfilled() == ALL_QUERIES  # end of results or max_pages: a full pass
+    assert ledger.capped == {IND_SW}  # 350 jobs, max_pages=3: hit the cap
+
+
+@respx.mock
+async def test_not_backfilled_query_pages_fully_even_when_all_known(
+    two_category_source: AmazonSource, page: dict[str, Any]
+) -> None:
+    server = FakeAmazon(page, catalogues())
+    respx.get(SEARCH_URL).mock(side_effect=server)
+    known, _ = await first_pass(two_category_source)
+    server.pages = dict.fromkeys(server.pages, 0)
+    await collect(two_category_source, MULTI_SPEC, known, QueryLedger())  # nothing backfilled
+    assert server.pages[("IND", "software-development")] == 3  # no early stop before a full pass
+
+
+@respx.mock
+async def test_second_run_costs_one_page_per_query(
+    two_category_source: AmazonSource, page: dict[str, Any]
+) -> None:
+    server = FakeAmazon(page, catalogues())
+    respx.get(SEARCH_URL).mock(side_effect=server)
+    known, ledger = await first_pass(two_category_source)
+    server.pages = dict.fromkeys(server.pages, 0)
+    ids = await collect(two_category_source, MULTI_SPEC, known, ledger)
+    assert server.pages == dict.fromkeys(server.pages, 1)  # every query: page 1 all known -> stop
+    assert set(ids) <= known  # jobs on fetched pages are still yielded (refreshes last_seen)
+    assert ledger.updated_backfilled() == ALL_QUERIES  # early stops keep queries backfilled
+
+
+@respx.mock
+async def test_new_jobs_on_one_query_page_further_only_there(
+    two_category_source: AmazonSource, page: dict[str, Any]
+) -> None:
+    server = FakeAmazon(page, catalogues())
+    respx.get(SEARCH_URL).mock(side_effect=server)
+    known, ledger = await first_pass(two_category_source)
+    server.catalogues[("IND", "software-development")][:0] = [10_402, 10_401]  # two new, newest first
+    server.pages = dict.fromkeys(server.pages, 0)
+    ids = await collect(two_category_source, MULTI_SPEC, known, ledger)
+    assert set(ids) - known == {"10402", "10401"}
+    assert server.pages[("IND", "software-development")] == 2  # page 1 had new jobs, page 2 all known
+    assert server.pages[("IND", "machine-learning-science")] == 1
+    assert server.pages[("IRL", "software-development")] == 1
+
+
+@respx.mock
+async def test_timed_out_pass_is_not_backfilled(
+    two_category_source: AmazonSource, page: dict[str, Any]
+) -> None:
+    server = FakeAmazon(page, catalogues())
+    server.hang_at = (("IND", "software-development"), 2)  # page 2 of the first query never answers
+    respx.get(SEARCH_URL).mock(side_effect=server)
+    ledger = QueryLedger()
+    with pytest.raises(TimeoutError):
+        async with asyncio.timeout(0.2):
+            await collect(two_category_source, MULTI_SPEC, ledger=ledger)
+    assert ledger.started == {IND_SW}
+    assert ledger.updated_backfilled() == frozenset()  # cut short: not a full pass
+
+
+@respx.mock
+async def test_error_mid_pass_un_backfills_the_query(
+    two_category_source: AmazonSource, page: dict[str, Any]
+) -> None:
+    server = FakeAmazon(page, catalogues())
+    respx.get(SEARCH_URL).mock(side_effect=server)
+    known, ledger = await first_pass(two_category_source)
+    server.catalogues[("IND", "software-development")][:0] = list(range(10_600, 10_500, -1))  # 100 new
+    server.hang_at = (("IND", "software-development"), 2 + 3)  # page 2 of this run (after 3 earlier)
+    with pytest.raises(TimeoutError):
+        async with asyncio.timeout(0.2):
+            await collect(two_category_source, MULTI_SPEC, known, ledger)
+    # page 1 (all new) was read, page 2 was not: newer jobs may hide there, so page fully next time
+    assert IND_SW not in ledger.updated_backfilled()
+
+
+@respx.mock
+async def test_known_ids_never_drop_jobs_from_a_fetched_page(
+    source: AmazonSource, page: dict[str, Any]
+) -> None:
     respx.get(SEARCH_URL).mock(return_value=httpx.Response(200, json=page))
-    assert await collect(source, stop_at=NEWEST_IDS[3]) == NEWEST_IDS[:3]
-    assert await collect(source, stop_at=NEWEST_IDS[0]) == []
-    assert len(await collect(source, stop_at="999")) == 20
+    assert await collect(source, known=frozenset(NEWEST_IDS)) == await collect(source)
+    assert not source.full_listing
 
 
 @respx.mock

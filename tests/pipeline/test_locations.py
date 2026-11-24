@@ -123,7 +123,7 @@ async def _fixture_jobs(companies: list[Company], http: PoliteClient) -> list[Ra
             mock.get(url__startswith=prefix).mock(return_value=httpx.Response(200, content=body))
         for company in companies:
             source = build_source(company, company.sources[0], http)
-            found += [job async for job in source.search(spec, None)]
+            found += [job async for job in source.search(spec, frozenset())]
     return found
 
 

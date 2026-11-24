@@ -41,8 +41,8 @@ def mock_board(jobs: list[dict[str, Any]]) -> respx.Route:
     return respx.get(LIST_URL, params={"mode": "json"}).mock(return_value=httpx.Response(200, json=jobs))
 
 
-async def collect(source: JobSource, stop_at: str | None = None) -> list[str]:
-    return [job.source_job_id async for job in source.search(SPEC, stop_at)]
+async def collect(source: JobSource, known: frozenset[str] = frozenset()) -> list[str]:
+    return [job.source_job_id async for job in source.search(SPEC, known)]
 
 
 def test_satisfies_protocol(source: LeverSource) -> None:
@@ -56,7 +56,7 @@ def test_satisfies_protocol(source: LeverSource) -> None:
 @respx.mock
 async def test_maps_fields(source: LeverSource, board: list[dict[str, Any]]) -> None:
     route = mock_board(board)
-    jobs = {job.source_job_id: job async for job in source.search(SPEC, None)}
+    jobs = {job.source_job_id: job async for job in source.search(SPEC, frozenset())}
     assert len(jobs) == 20
     assert route.calls.last.request.url.params["mode"] == "json"
 
@@ -73,7 +73,7 @@ async def test_maps_fields(source: LeverSource, board: list[dict[str, Any]]) -> 
 @respx.mock
 async def test_orders_newest_first_by_created_at(source: LeverSource, board: list[dict[str, Any]]) -> None:
     mock_board(board)
-    jobs = [job async for job in source.search(SPEC, None)]
+    jobs = [job async for job in source.search(SPEC, frozenset())]
     assert [j.source_job_id for j in jobs[:5]] == NEWEST_IDS
     assert jobs[-1].source_job_id == OLDEST_ID
     dates = [j.posted_at for j in jobs if j.posted_at is not None]
@@ -92,12 +92,15 @@ async def test_ties_and_missing_dates(source: LeverSource, board: list[dict[str,
 
 
 @respx.mock
-async def test_stop_at_behaviour(source: LeverSource, board: list[dict[str, Any]]) -> None:
+async def test_known_ids_are_ignored_full_board_every_time(
+    source: LeverSource, board: list[dict[str, Any]]
+) -> None:
     route = mock_board(board)
-    assert await collect(source, NEWEST_IDS[3]) == NEWEST_IDS[:3]  # stops before the stored job
-    assert await collect(source, NEWEST_IDS[0]) == []  # nothing new
-    assert len(await collect(source, "unknown-id")) == 20  # unknown id -> everything
-    assert route.call_count == 3  # one request per search: whole board, no paging
+    everything = await collect(source)
+    assert len(everything) == 20
+    assert await collect(source, frozenset(everything)) == everything  # all known: still the full board
+    assert source.full_listing
+    assert route.call_count == 2  # one request per search: whole board, no paging
 
 
 @respx.mock

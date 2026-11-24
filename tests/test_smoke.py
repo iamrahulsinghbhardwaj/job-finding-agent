@@ -26,9 +26,9 @@ def test_dry_run_reports_names_not_values(
     assert "sk-super-secret-value" not in out
 
 
-def test_without_dry_run_exits_nonzero(capsys: pytest.CaptureFixture[str]) -> None:
+def test_full_run_without_database_url_exits_2(capsys: pytest.CaptureFixture[str]) -> None:
     assert main([]) == 2
-    assert "not implemented" in capsys.readouterr().err
+    assert "DATABASE_URL is not set" in capsys.readouterr().err
 
 
 def test_module_entry_point_runs() -> None:

@@ -45,7 +45,7 @@ async def fetch_jobs(
     for source_config in company.active_sources:
         source = build_source(company, source_config, http)
         raws: list[RawJob] = []
-        async for job in source.search(spec, stop_at_job_id=None):
+        async for job in source.search(spec, known_job_ids=frozenset()):
             raws.append(job)
             if len(jobs) + len(raws) >= limit:
                 break

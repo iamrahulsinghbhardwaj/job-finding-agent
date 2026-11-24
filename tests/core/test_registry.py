@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from jobagent.core.models import Platform, SourceStatus, Tier
-from jobagent.core.registry import RegistryError, load_registry
+from jobagent.core.registry import RegistryError, load_registry, load_search_specs
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -90,6 +90,56 @@ def test_committed_registry_is_valid() -> None:
     assert microsoft.extra["host"] == "apply.careers.microsoft.com"
     assert companies["microsoft"].active_sources == []
     assert companies["amazon"].sources[0].tenant == "amazon.jobs"
-    assert companies["amazon"].sources[0].extra == {"categories": ["software-development"]}
+    assert companies["amazon"].sources[0].extra == {
+        "categories": ["software-development", "machine-learning-science"]
+    }
+    assert companies["amazon"].sources[0].timeout_seconds == 600
+    assert companies["stripe"].sources[0].timeout_seconds is None  # the crawl default
     assert companies["stripe"].india_presence is False
     assert companies["stripe"].europe_presence is True
+
+
+# --- per-tier search scope --------------------------------------------------------
+
+SEARCH = """
+search:
+  T1:
+    countries: [in, IE]
+    max_pages: 3
+  T1_STARTUP:
+    countries: []
+  OTHER:
+    countries: [IN]
+"""
+
+
+def test_search_specs_per_tier(tmp_path: Path) -> None:
+    specs = load_search_specs(write(tmp_path, SEARCH))
+    assert specs[Tier.T1].countries == ["IN", "IE"]  # upper-cased
+    assert specs[Tier.T1].max_pages == 3
+    assert specs[Tier.T1].keywords == []  # default: titles are filtered locally
+    assert specs[Tier.T1_STARTUP].countries == []
+    assert specs[Tier.OTHER].max_pages == 5  # SearchSpec default
+
+
+@pytest.mark.parametrize(
+    ("body", "message"),
+    [
+        ("companies: []\n", "top-level 'search:' mapping"),
+        ("search:\n  T1:\n    countries: [IN]\n", r"search\.T1_STARTUP: missing"),
+        (SEARCH + "  GOLD:\n    countries: [IN]\n", r"unknown tiers \['GOLD'\]"),
+        (SEARCH.replace("[in, IE]", "[India]"), r"search\.T1: countries: Value error, not an ISO-2"),
+        (SEARCH.replace("max_pages: 3", "max_pages: 0"), r"search\.T1: max_pages"),
+        (SEARCH.replace("max_pages: 3", "pages: 3"), r"search\.T1: pages: Extra inputs"),
+    ],
+)
+def test_bad_search_block_fails(tmp_path: Path, body: str, message: str) -> None:
+    with pytest.raises(RegistryError, match=message):
+        load_search_specs(write(tmp_path, body))
+
+
+def test_committed_search_scope() -> None:
+    specs = load_search_specs(REPO_ROOT / "companies.yaml")
+    assert specs[Tier.T1].countries == ["IN", "IE", "GB", "NL", "DE", "CH", "PL", "SE", "DK"]
+    assert specs[Tier.T1].keywords == []
+    assert specs[Tier.OTHER].countries == ["IN"]

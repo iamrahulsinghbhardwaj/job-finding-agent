@@ -77,6 +77,8 @@ class Source(Base):
     last_ok_at: Mapped[datetime | None]
     expected_job_count: Mapped[int | None]
     raw_sample: Mapped[Json | None]  # one recent listing, for debugging schema changes
+    # per-query state of paged sources, e.g. {"backfilled": ["|IND|software-development"]}
+    crawl_state: Mapped[Json] = mapped_column(server_default=_EMPTY_JSON)
 
 
 class Run(Base):
