@@ -53,14 +53,16 @@ Design: [docs/HLD.md](docs/HLD.md)
 - [x] Per-domain rate limit, backoff retries, dead-letter table
 
 **Pipeline**
-- [ ] Normalize: location → ISO country code; title cleanup
+- [x] Normalize: location → ISO country code; title cleanup
 - [x] Dedupe upsert on (company, source_job_id); `first_seen` / `last_seen`
+- [x] Cross-source dedupe on company + canonical title + country (jobs from the same source are never merged)
 - [ ] Rule filter: India + Europe hubs (incl. Copenhagen), title keywords, exclusions (Staff, Principal, Manager, Intern, Contract), 4–6 YOE
 - [ ] LLM ranker with Structured Outputs (score, fit, reason) + rule-score fallback
 - [x] Mark jobs stale after 3 missed runs
 
 **Digest**
-- [ ] HTML template: Tier 1 India (all), Tier 1 Europe (top 10)
+- [ ] HTML template: Tier 1 India (all), Tier 1 Europe (top 10); show the ORIGINAL title (`title`), never `title_canonical`
+- [ ] Run summary: include `NormalizeStats.as_counts()` per source in `Run.per_source_counts` (unknown-location share, target < 5%)
 - [ ] Send via Gmail; idempotent via `Run.emailed_job_ids`; no email when nothing is new
 - [ ] **Gate:** 7 consecutive scheduled runs, 0 duplicate emails
 

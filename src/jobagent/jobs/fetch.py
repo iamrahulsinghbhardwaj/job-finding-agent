@@ -16,8 +16,9 @@ from pathlib import Path
 from jobagent.adapters import UnsupportedPlatformError, build_source
 from jobagent.adapters.common import ScopeError
 from jobagent.core.http import BlockedError, FetchError, PoliteClient
-from jobagent.core.models import Company, RawJob, SearchSpec, SourceStatus
+from jobagent.core.models import Company, NormalizedJob, RawJob, SearchSpec, SourceStatus
 from jobagent.core.registry import RegistryError, load_registry
+from jobagent.pipeline.normalize import NormalizeStats, normalize_all, source_key
 
 
 def _positive_int(value: str) -> int:
@@ -35,18 +36,28 @@ def report_blocked(company: Company) -> None:
             print(f"Skipping blocked source {name}: {source.blocked_reason}")
 
 
-async def fetch_jobs(company: Company, spec: SearchSpec, limit: int, http: PoliteClient) -> list[RawJob]:
-    jobs: list[RawJob] = []
+async def fetch_jobs(
+    company: Company, spec: SearchSpec, limit: int, http: PoliteClient
+) -> tuple[list[NormalizedJob], NormalizeStats]:
+    """Fetch up to `limit` jobs across the company's active sources, normalized per source."""
+    jobs: list[NormalizedJob] = []
+    stats = NormalizeStats()
     for source_config in company.active_sources:
         source = build_source(company, source_config, http)
+        raws: list[RawJob] = []
         async for job in source.search(spec, stop_at_job_id=None):
-            jobs.append(job)
-            if len(jobs) >= limit:
-                return jobs
-    return jobs
+            raws.append(job)
+            if len(jobs) + len(raws) >= limit:
+                break
+        normalized, source_stats = normalize_all(raws, source=source_key(source_config))
+        jobs += normalized
+        stats += source_stats
+        if len(jobs) >= limit:
+            break
+    return jobs, stats
 
 
-async def _run(company: Company, spec: SearchSpec, limit: int) -> list[RawJob]:
+async def _run(company: Company, spec: SearchSpec, limit: int) -> tuple[list[NormalizedJob], NormalizeStats]:
     async with PoliteClient() as http:
         return await fetch_jobs(company, spec, limit, http)
 
@@ -77,7 +88,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     report_blocked(company)
     try:
-        jobs = asyncio.run(_run(company, spec, args.limit))
+        jobs, stats = asyncio.run(_run(company, spec, args.limit))
     except ScopeError as exc:
         print(f"Search scope: {exc}", file=sys.stderr)
         return 1
@@ -91,9 +102,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Fetch failed: {exc}", file=sys.stderr)
         return 1
 
-    for job in jobs:
+    for job in jobs:  # the original title, never title_canonical
         print(f"{job.title} | {job.location_raw or '-'} | {job.url}")
-    print(f"\n{len(jobs)} jobs")
+    print(f"\n{stats.summary()}")
     return 0
 
 

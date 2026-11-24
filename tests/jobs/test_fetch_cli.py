@@ -27,7 +27,7 @@ def test_prints_limited_rows(capsys: pytest.CaptureFixture[str]) -> None:
     lines = capsys.readouterr().out.strip().splitlines()
     assert lines[0] == "Integration Engineer | London | https://stripe.com/jobs/search?gh_jid=8337955"
     assert len([line for line in lines if " | " in line]) == 3
-    assert lines[-1] == "3 jobs"
+    assert lines[-1] == "3 jobs, 0 unknown location (0.0%)"
 
 
 @respx.mock
@@ -62,7 +62,7 @@ def test_amazon_with_country_and_keywords(capsys: pytest.CaptureFixture[str]) ->
         "Software Dev Engineer II, Amazon, Selection Monitoring | Bengaluru, Karnataka, IND | "
         "https://www.amazon.jobs/en/jobs/10611406/software-dev-engineer-ii-amazon-selection-monitoring"
     )
-    assert lines[-1] == "2 jobs"
+    assert lines[-1] == "2 jobs, 0 unknown location (0.0%)"
     params = dict(route.calls.last.request.url.params.multi_items())
     assert params["normalized_country_code[]"] == "IND"
     assert params["base_query"] == "Software Development Engineer"
@@ -84,7 +84,7 @@ def test_blocked_source_is_skipped_without_any_request(capsys: pytest.CaptureFix
     assert main(["--company", "microsoft", "--path", REGISTRY]) == 0
     out = capsys.readouterr().out
     assert "Skipping blocked source eightfold (microsoft): 429 + HTML + Set-Cookie" in out
-    assert out.strip().endswith("0 jobs")
+    assert out.strip().endswith("0 jobs, 0 unknown location (0.0%)")
     assert len(respx.calls) == 0
 
 
@@ -102,7 +102,7 @@ def test_lever_company_works(capsys: pytest.CaptureFixture[str]) -> None:
         "Security Systems Engineer | Seattle, WA | "
         "https://jobs.lever.co/palantir/98c244fc-444b-43ba-b152-30227191170b"
     )
-    assert lines[-1] == "2 jobs"
+    assert lines[-1] == "2 jobs, 0 unknown location (0.0%)"
 
 
 @respx.mock
@@ -114,4 +114,4 @@ def test_ashby_company_works(capsys: pytest.CaptureFixture[str]) -> None:
         "Forward Deployed Engineer (FDE), Cyber - London | London, UK | "
         "https://jobs.ashbyhq.com/openai/83b21911-d467-44ab-af3b-c0b898488ab4"
     )
-    assert lines[-1] == "2 jobs"
+    assert lines[-1] == "2 jobs, 0 unknown location (0.0%)"

@@ -126,3 +126,28 @@ class HealthReport(_Model):
         if self.error is not None and self.ok:
             raise ValueError("a report with an error cannot be ok")
         return self
+
+
+class NormalizedJob(_Model):
+    """A listing mapped to one schema: canonical title, ISO-2 country, hub city, remote flag.
+
+    `country` is set only when exactly one country was found; `countries` holds all of them
+    (so "London / Dublin" keeps both). Unknown or ambiguous locations are None, never guessed.
+
+    `title` is what people see (digest, emails). `title_canonical` is for matching only (filters,
+    cross-source dedupe) and must never be displayed.
+    """
+
+    source: NonEmptyStr  # which listing it came from, e.g. "amazon:amazon.jobs"
+    source_job_id: NonEmptyStr
+    company_slug: NonEmptyStr
+    title: NonEmptyStr  # original, whitespace cleaned: the one to display
+    title_canonical: NonEmptyStr  # matching only, e.g. "Software Engineer II"; never displayed
+    title_level: int | None = Field(default=None, ge=1, le=10)
+    location_raw: str
+    country: str | None = Field(default=None, pattern=r"^[A-Z]{2}$")
+    countries: tuple[str, ...] = ()
+    city: str | None = None  # canonical name; see pipeline.locations.HUB_CITIES for the hubs
+    remote: bool = False
+    url: HttpUrl
+    posted_at: AwareDatetime | None
