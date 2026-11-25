@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
@@ -14,6 +15,7 @@ from jobagent.core.http import (
     PoliteClient,
     TransientError,
     _parse_retry_after,  # pyright: ignore[reportPrivateUsage]
+    safe_url,
 )
 
 URL = "https://api.example.com/jobs"
@@ -46,6 +48,12 @@ async def client(clock: FakeClock) -> AsyncIterator[PoliteClient]:
     # min_delay=0 so retry tests only see backoff sleeps; delay tests build their own client.
     async with PoliteClient(min_delay=0, clock=clock, sleep=clock.sleep) as polite:
         yield polite
+
+
+@respx.mock
+async def test_get_bytes_returns_the_raw_body(client: PoliteClient) -> None:
+    respx.get(URL).mock(return_value=httpx.Response(200, content=b"%PDF-\x00\xff"))
+    assert await client.get_bytes(URL) == b"%PDF-\x00\xff"
 
 
 # --- retries -------------------------------------------------------------------
@@ -227,3 +235,42 @@ async def test_cookies_are_never_stored_or_sent(client: PoliteClient) -> None:
     await client.get_json(URL)
     assert "cookie" not in route.calls[1].request.headers  # Set-Cookie was not sent back
     assert list(client._client.cookies.jar) == []  # pyright: ignore[reportPrivateUsage]
+
+
+@respx.mock
+async def test_request_urls_never_reach_the_logs(
+    client: PoliteClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    # httpx logs each request's full URL at INFO; a SAS signature in the query must not leak.
+    secret_url = f"{URL}?sig=FAKESIG"
+    respx.get(URL).mock(return_value=httpx.Response(200, json={}))  # any query
+    with caplog.at_level(logging.DEBUG):
+        await client.get_json(secret_url, params={"token": "FAKETOKEN"})
+    assert "FAKESIG" not in caplog.text
+    assert "FAKETOKEN" not in caplog.text
+    lines = [r.getMessage() for r in caplog.records if r.name == "jobagent.core.http"]
+    assert lines == ["GET api.example.com/jobs -> 200 in 0ms"]
+
+
+@respx.mock
+async def test_failed_request_line_has_no_query(
+    client: PoliteClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    respx.get(URL).mock(side_effect=httpx.ConnectTimeout("boom"))
+    with caplog.at_level(logging.DEBUG), pytest.raises(TransientError):
+        await client.get_json(f"{URL}?sig=FAKESIG")
+    lines = [r.getMessage() for r in caplog.records if r.name == "jobagent.core.http"]
+    assert lines == ["GET api.example.com/jobs -> ConnectTimeout"] * 3  # one per attempt
+    assert "FAKESIG" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("https://fake.blob.core.windows.net/c/x.pdf?sig=FAKESIG", "fake.blob.core.windows.net/c/x.pdf"),
+        ("https://api.example.com/jobs?page=2#top", "api.example.com/jobs"),
+        ("https://api.example.com", "api.example.com/"),
+    ],
+)
+def test_safe_url_keeps_host_and_path_only(url: str, expected: str) -> None:
+    assert safe_url(url) == expected

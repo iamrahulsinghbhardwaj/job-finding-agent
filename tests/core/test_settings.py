@@ -8,6 +8,7 @@ EXPECTED_NAMES = {
     "RANK_MODEL",
     "PROFILE_MODEL",
     "CV_BLOB_SAS_URL",
+    "PROFILE_OVERRIDES_SAS_URL",
     "GMAIL_CLIENT_ID",
     "GMAIL_CLIENT_SECRET",
     "GMAIL_REFRESH_TOKEN",
@@ -49,3 +50,22 @@ def test_secrets_not_leaked_in_repr(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_require_raises_when_missing() -> None:
     with pytest.raises(RuntimeError, match="GMAIL_REFRESH_TOKEN"):
         Settings().require("gmail_refresh_token")
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_empty_value_counts_as_unset(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+    monkeypatch.setenv("PROFILE_MODEL", value)
+    settings = Settings()
+    assert settings.profile_model is None
+    assert settings.present_settings()["PROFILE_MODEL"] is False
+    with pytest.raises(RuntimeError, match="PROFILE_MODEL"):
+        settings.require("profile_model")
+
+
+def test_empty_line_in_dotenv_counts_as_unset() -> None:
+    # isolated_env chdirs into an empty tmp dir, so this .env is the only one seen.
+    with open(".env", "w") as f:
+        f.write("CV_BLOB_SAS_URL=\nRANK_MODEL=gpt-5.4-nano\n")
+    settings = Settings()
+    assert settings.cv_blob_sas_url is None
+    assert settings.rank_model == "gpt-5.4-nano"

@@ -6,8 +6,9 @@ Secret-like values are `SecretStr` so they never appear in reprs or logs.
 """
 
 from functools import lru_cache
+from typing import Any
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,12 +29,19 @@ class Settings(BaseSettings):
 
     # CV
     cv_blob_sas_url: SecretStr | None = None
+    profile_overrides_sas_url: SecretStr | None = None  # optional; private YAML next to the CV
 
     # Gmail (OAuth installed-app flow; refresh token minted once, locally)
     gmail_client_id: SecretStr | None = None
     gmail_client_secret: SecretStr | None = None
     gmail_refresh_token: SecretStr | None = None
     digest_to: SecretStr | None = None  # personal address: keep out of public logs
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def _empty_is_unset(cls, value: Any) -> Any:
+        """An empty `KEY=` line in .env means "not set", not an empty string."""
+        return None if isinstance(value, str) and not value.strip() else value
 
     def present_settings(self) -> dict[str, bool]:
         """Map each setting's env var name to whether it is set. Never returns values."""

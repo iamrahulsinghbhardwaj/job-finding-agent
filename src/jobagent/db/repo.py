@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from jobagent.core import models as core
 from jobagent.core.models import NormalizedJob, Platform
-from jobagent.db.models import Company, DeadLetter, Job, Run, Source
+from jobagent.db.models import Company, CvProfile, DeadLetter, Job, Run, Source
 
 ACTIVE = "active"
 STALE = "stale"
@@ -225,3 +225,16 @@ def _row(job: NormalizedJob, company_id: int, source_id: int, run_id: int) -> di
 def _rowcount(session: Session, stmt: Executable) -> int:
     """Rows affected by an UPDATE/DELETE (session.execute is typed as Result; it is a CursorResult)."""
     return cast(CursorResult[Any], session.execute(stmt)).rowcount
+
+
+def latest_cv_profile(session: Session) -> CvProfile | None:
+    """The newest stored profile (highest id), or None before the first build."""
+    return session.scalars(select(CvProfile).order_by(CvProfile.id.desc()).limit(1)).first()
+
+
+def add_cv_profile(session: Session, *, key: str, model: str, profile_json: Mapping[str, Any]) -> int:
+    """Store a new profile version and return its id (the profile version)."""
+    row = CvProfile(hash=key, model=model, profile_json=dict(profile_json))
+    session.add(row)
+    session.flush()
+    return row.id

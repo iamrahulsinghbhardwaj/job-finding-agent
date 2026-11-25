@@ -8,11 +8,13 @@
   reports and stops (no workarounds).
 - Never stores or sends cookies (a reject-all cookie jar), so a site that needs cookies
   fails visibly instead of silently working through a session.
-- Error messages carry status and host only, never response bodies (logs are public).
+- Error messages carry status and host only, never response bodies (logs are public), and the
+  httpx request log (full URLs) is turned off.
 """
 
 import asyncio
 import http.cookiejar
+import logging
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -29,6 +31,15 @@ from jobagent import __version__
 
 USER_AGENT = f"jobagent/{__version__} (+https://github.com/iamrahulsinghbhardwaj/job-finding-agent)"
 MAX_RETRY_AFTER = 60.0
+
+# httpx (and httpx2, under the openai SDK) log every request at INFO with the full URL, query
+# included: that would put the CV link's SAS signature in public logs. Quiet them for every caller.
+# PoliteClient logs its own line instead: host + path, the query string stripped.
+URL_LOGGERS = ("httpx", "httpx2")
+for _name in URL_LOGGERS:
+    logging.getLogger(_name).setLevel(logging.WARNING)
+
+log = logging.getLogger(__name__)
 
 _Scalar = str | int | float | bool
 # A mapping, or a sequence of pairs when a key repeats (e.g. category[]=a&category[]=b).
@@ -135,6 +146,10 @@ class PoliteClient:
     async def get_text(self, url: str, params: Params = None) -> str:
         return (await self._get(url, params)).text
 
+    async def get_bytes(self, url: str, params: Params = None) -> bytes:
+        """Raw body, for binary files such as the CV PDF."""
+        return (await self._get(url, params)).content
+
     def stats(self) -> dict[str, DomainStats]:
         """Per-domain counts (copies), for the run log."""
         return {host: replace(state.stats) for host, state in self._domains.items()}
@@ -165,10 +180,14 @@ class PoliteClient:
         async with state.semaphore:
             await self._wait_turn(state)
             state.stats.requests += 1
+            started = self._clock()
             try:
                 response = await self._client.get(url, params=_query(params))
             except httpx.TransportError as exc:  # timeouts, connection errors, protocol errors
+                log.debug("GET %s -> %s", safe_url(url), type(exc).__name__)
                 raise TransientError(f"{type(exc).__name__} from {host}", host=host) from None
+        elapsed_ms = round((self._clock() - started) * 1000)
+        log.debug("GET %s -> %d in %dms", safe_url(url), response.status_code, elapsed_ms)
         return self._check_status(response, host)
 
     def _check_status(self, response: httpx.Response, host: str) -> httpx.Response:
@@ -206,6 +225,12 @@ class PoliteClient:
     @staticmethod
     def _count_retry(state: _DomainState) -> None:
         state.stats.retries += 1
+
+
+def safe_url(url: str) -> str:
+    """host + path only, for logs: the query string (tokens, SAS signatures) and fragment dropped."""
+    parsed = httpx.URL(url)
+    return f"{parsed.host}{parsed.path}"
 
 
 def _query(params: Params) -> httpx.QueryParams | None:

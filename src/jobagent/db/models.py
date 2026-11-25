@@ -128,6 +128,8 @@ class Ranking(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     job_id: Mapped[int] = mapped_column(ForeignKey("job.id", ondelete="CASCADE"))
     profile_version: Mapped[int]
+    # sha256(profile_version + overrides content): exactly which profile the job was ranked against
+    effective_profile_hash: Mapped[str] = mapped_column(String(64))
     model: Mapped[str] = mapped_column(String(100))
     score: Mapped[int]
     fit: Mapped[str] = mapped_column(String(10))  # High / Medium / Low
@@ -142,4 +144,22 @@ class DeadLetter(Base):
     run_id: Mapped[int] = mapped_column(ForeignKey("run.id", ondelete="CASCADE"))
     source_id: Mapped[int] = mapped_column(ForeignKey("source.id", ondelete="CASCADE"))
     error: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class CvProfile(Base):
+    """One row per CV version (HLD §10). id is the profile version a Ranking row records.
+
+    hash is the profile key: sha256 of CV text + model + prompt version (pipeline/profile.py).
+    Indexed, not unique: going back to an older CV simply becomes the newest version.
+    profile_json is derived from the private CV: never log it.
+    """
+
+    __tablename__ = "cv_profile"
+    __table_args__ = (Index("ix_cv_profile_hash", "hash"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    hash: Mapped[str] = mapped_column(String(64))  # profile key, see the docstring
+    model: Mapped[str] = mapped_column(String(100))
+    profile_json: Mapped[Json]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())

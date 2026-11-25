@@ -10,7 +10,7 @@ Design: [docs/HLD.md](docs/HLD.md)
 ## Open decisions
 
 - [ ] Confirm the ~50 Tier 1 companies (incl. whether Flipkart, PhonePe, Razorpay, CRED, Swiggy, Zomato, Meesho count as Tier 1)
-- [ ] Upload CV (PDF) to a private Azure Blob container; create a read-only SAS URL for that blob (with expiry); save it as the `CV_BLOB_SAS_URL` secret
+- [x] Upload CV (PDF) to a private Azure Blob container; create a read-only SAS URL for that blob (with expiry); save it as the `CV_BLOB_SAS_URL` secret
 - [ ] Decide hours per week committed to this project
 - [ ] Confirm experience rule: roles asking 4+ years, Tier 1 capped at 6
 
@@ -29,7 +29,10 @@ Design: [docs/HLD.md](docs/HLD.md)
 - [x] Python 3.12 skeleton: `core/`, `adapters/`, `pipeline/`, `agents/`, `digest/`, `jobs/`, `tests/`
 - [x] `pyproject.toml`, ruff, pytest, pre-commit
 - [ ] Neon Postgres project on the Free plan; `DATABASE_URL` secret
-- [ ] CV loader: download via SAS, extract text with `pypdf`, hash; rebuild ranking profile only when the hash changes
+- [x] CV loader: download via SAS, extract text with `pypdf`, hash; rebuild ranking profile only when the hash changes (hash of CV text + PROFILE_MODEL + PROFILE_PROMPT_VERSION)
+  - `pipeline/profile.py`, table `cv_profile` (id = profile version), CLI `python -m jobagent.jobs.profile [--show]`
+  - Not yet called by the daily run: the ranker brick calls `ensure_profile` at run start
+  - Still to do: add `CV_BLOB_SAS_URL` as a GitHub Actions secret; the profile CLI warns when the SAS has under 14 days left
 - [x] Alembic migrations: Company, Source, Job, Ranking, Run
 - [ ] OpenAI key as `OPENAI_API_KEY` secret + monthly budget cap in the OpenAI dashboard
 - [ ] Gmail API OAuth (send, compose drafts, read) → `GMAIL_TOKEN` secret
@@ -99,6 +102,7 @@ Design: [docs/HLD.md](docs/HLD.md)
 - [ ] Workday adapter
 - [ ] Run-failure alert email; schedule-paused alert
 - [ ] Cost per run logged
+  - Per call done: `core/llm.py` (tokens, cached, latency, cost; prices in `core/llm_prices.py`); `LlmLedger` to total into `Run.cost_usd`
 - [ ] **Gate:** one broken source repaired automatically
 
 ## v2
