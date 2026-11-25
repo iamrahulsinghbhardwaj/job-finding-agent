@@ -461,3 +461,15 @@ async def test_health_reports_blocked_and_empty(source: AmazonSource, page: dict
 
 def test_fixture_is_trimmed() -> None:
     assert len(load_fixture("amazon_india_sde.json")["jobs"]) == 20
+
+
+@respx.mock
+async def test_search_min_yoe_matches_details(source: AmazonSource, page: dict[str, Any]) -> None:
+    # min_yoe is read from the search results (basic quals), so the filter knows it before details.
+    respx.get(SEARCH_URL).mock(return_value=httpx.Response(200, json=page))
+    jobs = [job async for job in source.search(SPEC, frozenset())]
+    assert all(job.has_description for job in jobs)
+    by_id = {job.source_job_id: job.min_yoe for job in jobs}
+    assert (by_id["10611406"], by_id["10610387"]) == (3, 5)
+    for job in jobs:
+        assert job.min_yoe == (await source.get_details(job.source_job_id)).min_yoe

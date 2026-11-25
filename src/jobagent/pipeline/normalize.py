@@ -104,6 +104,9 @@ def normalize(raw: RawJob, *, source: str) -> NormalizedJob:
         remote=location.remote,
         url=raw.url,
         posted_at=raw.posted_at,
+        has_description=raw.has_description,
+        min_yoe=raw.min_yoe,
+        max_yoe=raw.max_yoe,
     )
 
 

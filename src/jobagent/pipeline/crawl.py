@@ -7,6 +7,7 @@
    the others. Jobs yielded before a failure are kept.
 3. Store (DB, one source at a time, each in its own savepoint): normalize, upsert, collect NEW
    job ids; failures go to dead_letter. Finally the per-source counts are saved on the Run row.
+   The stored jobs are returned too (each flagged new or not) for the rule filter.
 
 Staleness: a batch is `complete` (missing jobs get a missed run) only when the source returns
 its whole listing in one search (full_listing) AND the fetch finished without error.
@@ -28,7 +29,7 @@ from sqlalchemy.orm import Session
 from jobagent.adapters import build_source
 from jobagent.core.contracts import JobSource, QueryLedger
 from jobagent.core.http import PoliteClient
-from jobagent.core.models import Company, RawJob, SearchSpec, SourceConfig, SourceStatus, Tier
+from jobagent.core.models import Company, NormalizedJob, RawJob, SearchSpec, SourceConfig, SourceStatus, Tier
 from jobagent.db import repo
 from jobagent.pipeline.normalize import NormalizeStats, normalize_all, source_key
 
@@ -67,10 +68,17 @@ class SourceOutcome:
 
 
 @dataclass(frozen=True)
+class CrawledJob:
+    job: NormalizedJob
+    is_new: bool  # first seen in this run
+
+
+@dataclass(frozen=True)
 class CrawlResult:
     run_id: int
     outcomes: list[SourceOutcome]
     new_job_ids: frozenset[int]
+    jobs: list[CrawledJob] = field(default_factory=list)  # every job stored this run, one per id
 
 
 @dataclass(frozen=True)
@@ -122,15 +130,17 @@ async def crawl(
     )
 
     new_ids: set[int] = set()
+    jobs: list[CrawledJob] = []
     for plan, result in zip(plans, fetched, strict=True):
-        outcome = _store(session, run_id, plan, result)
+        stored = _store(session, run_id, plan, result)
         session.commit()
-        new_ids |= outcome.new_job_ids
-        outcomes.append(outcome.outcome)
+        new_ids |= stored.new_job_ids
+        outcomes.append(stored.outcome)
+        jobs += stored.jobs
 
     repo.finish_run(session, run_id, {o.source: o.counts() for o in outcomes})
     session.commit()
-    return CrawlResult(run_id=run_id, outcomes=outcomes, new_job_ids=frozenset(new_ids))
+    return CrawlResult(run_id=run_id, outcomes=outcomes, new_job_ids=frozenset(new_ids), jobs=jobs)
 
 
 async def _fetch(
@@ -151,6 +161,7 @@ async def _fetch(
 class _Stored:
     outcome: SourceOutcome
     new_job_ids: AbstractSet[int]
+    jobs: list[CrawledJob]
 
 
 def _store(session: Session, run_id: int, plan: _Plan, result: _Fetched) -> _Stored:
@@ -163,6 +174,7 @@ def _store(session: Session, run_id: int, plan: _Plan, result: _Fetched) -> _Sto
     if ledger.capped:
         log.warning("%s: %d queries hit max_pages", key, len(ledger.capped))  # counts only
     new: set[int] = set()
+    stored: list[CrawledJob] = []
     errors = [result.error] if result.error else []
     try:
         with session.begin_nested():
@@ -178,15 +190,28 @@ def _store(session: Session, run_id: int, plan: _Plan, result: _Fetched) -> _Sto
             )
             if ledger.started:  # paged source: save which queries are now backfilled
                 repo.save_backfilled(session, plan.source_id, ledger.updated_backfilled())
+        stored = _crawled(jobs, plan.known)
     except Exception as exc:  # a storage failure is one source's error, not the run's
         new = set()
+        stored = []
         errors.append(f"store: {_describe(exc)}")
     for error in errors:
         with session.begin_nested():
             repo.record_dead_letter(session, run_id=run_id, source_id=plan.source_id, error=error)
     outcome.new = len(new)
     outcome.errors = len(errors)
-    return _Stored(outcome, new)
+    return _Stored(outcome, new, stored)
+
+
+def _crawled(jobs: Sequence[NormalizedJob], known: AbstractSet[str]) -> list[CrawledJob]:
+    """One per source job id, first wins (as in upsert_jobs): Amazon queries can overlap."""
+    seen: set[str] = set()
+    out: list[CrawledJob] = []
+    for job in jobs:
+        if job.source_job_id not in seen:
+            seen.add(job.source_job_id)
+            out.append(CrawledJob(job, is_new=job.source_job_id not in known))
+    return out
 
 
 def _describe(exc: BaseException) -> str:

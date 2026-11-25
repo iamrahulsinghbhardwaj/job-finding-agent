@@ -57,11 +57,14 @@ Design: [docs/HLD.md](docs/HLD.md)
 - [x] Normalize: location → ISO country code; title cleanup
 - [x] Dedupe upsert on (company, source_job_id); `first_seen` / `last_seen`
 - [x] Cross-source dedupe on company + canonical title + country (jobs from the same source are never merged)
-- [ ] Rule filter: India + Europe hubs (incl. Copenhagen), title keywords, exclusions (Staff, Principal, Manager, Intern, Contract), 4–6 YOE
+- [x] Rule filter: India + Europe hubs (incl. Copenhagen), title keywords, exclusions (Staff, Principal, Manager, Intern, Contract), 4–6 YOE
   - Scope by `NormalizedJob.countries` (the truth), not `country`: a job is in scope if ANY of its countries matches the tier ("London or Dublin", "US / Canada")
   - Bare "Remote" with no country: Tier 1 → drop but count; Tier 1 Startups → keep, label "Remote (unspecified)"
-  - Open question: Tier 1 Europe is hub *cities* (HLD §4), but a country match also hits non-hub cities (e.g. Munich in DE). Decide country vs hub city per tier
+  - Decided: Europe by country, not hub city (Munich in DE is in scope)
+  - Lists live in `pipeline/filter_config.py`; min_yoe read from listings (all four platforms)
+  - [ ] Per-company SDE level map (e.g. Google SWE III = the 4–6 YOE band); hook is `filter.sde2_levels`
 - [ ] LLM ranker with Structured Outputs (score, fit, reason) + rule-score fallback
+  - Before ranking: get_details for filter survivors, `filter.with_details`, then re-run `passes` (YOE from the full posting)
 - [x] Mark jobs stale after 3 missed runs
 
 **Digest**

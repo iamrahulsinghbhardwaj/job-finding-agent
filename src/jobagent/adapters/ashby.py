@@ -15,7 +15,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from jobagent.adapters.common import html_to_text, schema_hash
+from jobagent.adapters.common import extract_yoe, html_to_text, schema_hash, years_fields
 from jobagent.core.contracts import QueryLedger
 from jobagent.core.http import BlockedError, FetchError, PoliteClient
 from jobagent.core.models import Company, HealthReport, JobDetail, RawJob, SearchSpec, SourceConfig
@@ -53,10 +53,8 @@ class AshbySource:
         item = self._board.get(job_id)
         if item is None:
             raise FetchError(f"job not on board: {self._tenant}", host="api.ashbyhq.com")
-        text = (item.get("descriptionPlain") or "").replace("\xa0", " ").strip()
-        if not text:
-            text = html_to_text(item.get("descriptionHtml") or "")
-        return JobDetail(source_job_id=job_id, description_text=text)
+        text = _description_text(item)
+        return JobDetail(source_job_id=job_id, description_text=text, **years_fields(extract_yoe(text)))
 
     async def health_check(self) -> HealthReport:
         try:
@@ -99,5 +97,16 @@ class AshbySource:
                 "url": item["jobUrl"],
                 "posted_at": item.get("publishedAt"),
                 "raw": item,
+                **_years(item),
             }
         )
+
+
+def _years(item: dict[str, Any]) -> dict[str, Any]:
+    text = _description_text(item)
+    return {"has_description": bool(text), **years_fields(extract_yoe(text))}
+
+
+def _description_text(item: dict[str, Any]) -> str:
+    text = (item.get("descriptionPlain") or "").replace("\xa0", " ").strip()
+    return text or html_to_text(item.get("descriptionHtml") or "")

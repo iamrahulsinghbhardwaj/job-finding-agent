@@ -108,12 +108,18 @@ class RawJob(_Model):
     url: HttpUrl
     posted_at: AwareDatetime | None
     raw: dict[str, Any]
+    # From the listing's description. has_description=False means the payload had no description
+    # at all, so the years are not known to be absent: the stored values are kept.
+    has_description: bool = False
+    min_yoe: int | None = Field(default=None, ge=0, le=50)
+    max_yoe: int | None = Field(default=None, ge=0, le=50)  # only for an explicit range ("2-12+ years")
 
 
 class JobDetail(_Model):
     source_job_id: NonEmptyStr
     description_text: str
     min_yoe: int | None = Field(default=None, ge=0, le=50)
+    max_yoe: int | None = Field(default=None, ge=0, le=50)
 
 
 class HealthReport(_Model):
@@ -152,3 +158,6 @@ class NormalizedJob(_Model):
     remote: bool = False
     url: HttpUrl
     posted_at: AwareDatetime | None
+    has_description: bool = False  # see RawJob
+    min_yoe: int | None = Field(default=None, ge=0, le=50)  # None = unknown (the YOE rule passes it)
+    max_yoe: int | None = Field(default=None, ge=0, le=50)  # only for an explicit range

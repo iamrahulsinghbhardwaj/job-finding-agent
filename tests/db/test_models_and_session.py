@@ -45,4 +45,4 @@ def test_jsonb_columns() -> None:
 
 def test_single_migration_head() -> None:
     script = ScriptDirectory.from_config(Config(str(REPO_ROOT / "alembic.ini")))
-    assert script.get_heads() == ["0002"]
+    assert script.get_heads() == ["0003"]

@@ -26,7 +26,15 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from jobagent.adapters.common import ScopeError, extract_min_yoe, html_to_text, schema_hash, to_iso3
+from jobagent.adapters.common import (
+    ScopeError,
+    YearsRequired,
+    extract_yoe,
+    html_to_text,
+    schema_hash,
+    to_iso3,
+    years_fields,
+)
 from jobagent.core.contracts import QueryLedger
 from jobagent.core.http import BlockedError, FetchError, PoliteClient
 from jobagent.core.models import Company, HealthReport, JobDetail, RawJob, SearchSpec, SourceConfig
@@ -94,13 +102,10 @@ class AmazonSource:
             f"Basic qualifications\n{basic}" if basic else "",
             f"Preferred qualifications\n{preferred}" if preferred else "",
         ]
-        # Minimum experience comes from the REQUIRED (basic) qualifications, else the description.
-        # Never from preferred qualifications: "8+ years preferred" is not a minimum.
-        min_yoe = extract_min_yoe(basic)
         return JobDetail(
             source_job_id=job_id,
             description_text="\n".join(part for part in parts if part),
-            min_yoe=min_yoe if min_yoe is not None else extract_min_yoe(description),
+            **years_fields(_yoe(item)),
         )
 
     async def health_check(self) -> HealthReport:
@@ -173,6 +178,11 @@ class AmazonSource:
                 "url": SITE + item["job_path"],
                 "posted_at": _parse_posted_date(item.get("posted_date")),
                 "raw": item,
+                # the search results carry the qualifications
+                "has_description": bool(
+                    _text(item.get("basic_qualifications")) or _text(item.get("description"))
+                ),
+                **years_fields(_yoe(item)),
             }
         )
 
@@ -187,6 +197,13 @@ def _categories(company: Company, source: SourceConfig) -> list[str]:
     if not all(isinstance(c, str) and c for c in categories):
         raise ScopeError(f"{company.slug}: extra.categories must be a non-empty list of strings")
     return [str(c) for c in categories]
+
+
+def _yoe(item: dict[str, Any]) -> YearsRequired:
+    """From the REQUIRED (basic) qualifications, else the description. Never from preferred
+    qualifications: "8+ years preferred" is not a minimum."""
+    basic = extract_yoe("Basic qualifications\n" + _text(item.get("basic_qualifications")))
+    return basic if basic.min is not None else extract_yoe(_text(item.get("description")))
 
 
 def _text(html: Any) -> str:

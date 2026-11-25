@@ -15,7 +15,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from jobagent.adapters.common import html_to_text, schema_hash
+from jobagent.adapters.common import extract_yoe, html_to_text, schema_hash, years_fields
 from jobagent.core.contracts import QueryLedger
 from jobagent.core.http import BlockedError, FetchError, PoliteClient
 from jobagent.core.models import Company, HealthReport, JobDetail, RawJob, SearchSpec, SourceConfig
@@ -47,7 +47,10 @@ class LeverSource:
 
     async def get_details(self, job_id: str) -> JobDetail:
         data = await self._http.get_json(f"{self._postings_url}/{job_id}", params=PARAMS)
-        return JobDetail(source_job_id=str(data["id"]), description_text=_description_text(data))
+        text = _description_text(data)
+        return JobDetail(
+            source_job_id=str(data["id"]), description_text=text, **years_fields(extract_yoe(text))
+        )
 
     async def health_check(self) -> HealthReport:
         try:
@@ -85,6 +88,7 @@ class LeverSource:
                 "url": item["hostedUrl"],
                 "posted_at": _from_epoch_ms(item.get("createdAt")),
                 "raw": item,
+                **_years(item),  # the list has full descriptions
             }
         )
 
@@ -96,6 +100,11 @@ def _from_epoch_ms(value: Any) -> datetime | None:
         return datetime.fromtimestamp(value / 1000, tz=UTC)
     except (OverflowError, OSError, ValueError) as exc:  # platform-dependent for absurd values
         raise ValueError(f"createdAt out of range: {value}") from exc
+
+
+def _years(item: dict[str, Any]) -> dict[str, Any]:
+    text = _description_text(item)
+    return {"has_description": bool(text), **years_fields(extract_yoe(text))}
 
 
 def _description_text(data: dict[str, Any]) -> str:

@@ -4,13 +4,15 @@
     python -m jobagent.jobs.run                     # crawl every company in companies.yaml
     python -m jobagent.jobs.run --company amazon    # crawl a subset (repeatable)
 
-Crawl only for now: fetch, normalize, store, count new jobs. No ranking or email yet.
+Crawl (fetch, normalize, store, count new jobs), then the rule filter over every job fetched this
+run: counts per company and the top rejection reasons. No ranking or email yet.
 """
 
 import argparse
 import asyncio
 import logging
 import sys
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,9 +25,12 @@ from jobagent.core.registry import RegistryError, load_registry, load_search_spe
 from jobagent.core.settings import Settings
 from jobagent.db.session import make_engine
 from jobagent.pipeline.crawl import CrawlResult, SourceOutcome, crawl
+from jobagent.pipeline.filter import FilterReport, filter_jobs
 from jobagent.pipeline.normalize import NormalizeStats
 
 COLUMNS = ("company", "sources", "fetched", "new", "errors", "unknown_loc")
+FILTER_COLUMNS = ("company", "jobs", "passed", "passed_new")
+TOP_REASONS = 10
 
 
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
@@ -81,14 +86,18 @@ def company_rows(outcomes: Sequence[SourceOutcome]) -> list[CompanyRow]:
     return list(rows.values())
 
 
-def format_summary(result: CrawlResult) -> str:
-    rows = company_rows(result.outcomes)
-    table = [COLUMNS, *(row.cells() for row in rows)]
+def _table(header: Sequence[str], rows: Sequence[Sequence[str]]) -> list[str]:
+    table = [tuple(header), *(tuple(row) for row in rows)]
     widths = [max(len(cell) for cell in column) for column in zip(*table, strict=True)]
     lines = [
         "  ".join(cell.ljust(w) for cell, w in zip(line, widths, strict=True)).rstrip() for line in table
     ]
     lines.insert(1, "  ".join("-" * w for w in widths))
+    return lines
+
+
+def format_summary(result: CrawlResult) -> str:
+    lines = _table(COLUMNS, [row.cells() for row in company_rows(result.outcomes)])
 
     fetched = [o for o in result.outcomes if not o.blocked]
     stats = sum((o.stats for o in fetched), NormalizeStats())
@@ -100,6 +109,34 @@ def format_summary(result: CrawlResult) -> str:
         f"{sum(o.errors for o in fetched)} errors, "
         f"{stats.unknown_share:.1%} unknown location",
     ]
+    return "\n".join(lines)
+
+
+def run_filter(result: CrawlResult, companies: Sequence[Company]) -> tuple[FilterReport, Counter[str]]:
+    """The rule filter over every job stored this run; also counts survivors first seen this run."""
+    by_slug = {company.slug: company for company in companies}
+    kept, report = filter_jobs((crawled.job for crawled in result.jobs), by_slug)
+    new = {(c.job.source, c.job.source_job_id) for c in result.jobs if c.is_new}
+    passed_new = Counter(job.company_slug for job in kept if (job.source, job.source_job_id) in new)
+    return report, passed_new
+
+
+def format_filter(report: FilterReport, passed_new: Counter[str]) -> str:
+    """Counts only: safe for public logs."""
+    rows = [
+        (slug, f"{n:,}", f"{report.after[slug]:,}", f"{passed_new[slug]:,}")
+        for slug, n in report.before.items()
+    ]
+    lines = ["", "rule filter", *_table(FILTER_COLUMNS, rows)]
+    lines += [
+        "",
+        f"filter: {report.total_before:,} -> {report.total_after:,} passed "
+        f"({sum(passed_new.values()):,} new, {report.remote_unspecified:,} labelled Remote (unspecified))",
+    ]
+    if report.reasons:
+        lines += ["", f"top rejection reasons (of {sum(report.reasons.values()):,} rejected):"]
+        width = max(len(reason) for reason, _ in report.reasons.most_common(TOP_REASONS))
+        lines += [f"  {reason.ljust(width)}  {n:,}" for reason, n in report.reasons.most_common(TOP_REASONS)]
     return "\n".join(lines)
 
 
@@ -140,6 +177,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     finally:
         engine.dispose()
     print(format_summary(result))
+    print(format_filter(*run_filter(result, companies)))
     return 0
 
 

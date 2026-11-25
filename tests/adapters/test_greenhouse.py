@@ -140,7 +140,7 @@ async def test_get_details_extracts_text(source: GreenhouseSource) -> None:
     assert "<" not in text
     assert "&lt;" not in text
     assert "&amp;" not in text
-    assert detail.min_yoe is None  # parsed later by the pipeline
+    assert detail.min_yoe == 6  # "6+ years of professional software engineering experience"
 
 
 # --- health ----------------------------------------------------------------
@@ -193,3 +193,36 @@ def test_fixture_is_trimmed() -> None:
     assert len(board["jobs"]) == 20
     assert board["meta"]["total"] == 20
     assert len(json.dumps(load_fixture("greenhouse_stripe_job.json"))) < 5000
+
+
+# --- min_yoe from the board call (?content=true) -----------------------------
+
+
+@respx.mock
+async def test_board_call_asks_for_content_and_reads_min_yoe(source: GreenhouseSource) -> None:
+    # Real board response with ?content=true (3 jobs): descriptions arrive in the same call.
+    route = respx.get(LIST_URL, params={"content": "true"}).mock(
+        return_value=httpx.Response(200, json=load_fixture("greenhouse_stripe_content.json"))
+    )
+    jobs = {job.source_job_id: job async for job in source.search(SPEC, frozenset())}
+    assert route.call_count == 1
+    assert all(job.has_description for job in jobs.values())
+    assert {job_id: job.min_yoe for job_id, job in jobs.items()} == {
+        "8172510": 10,
+        "8332467": 8,
+        "8138044": 8,
+    }
+
+
+@respx.mock
+async def test_board_without_content_leaves_min_yoe_unknown(
+    source: GreenhouseSource, board: dict[str, object]
+) -> None:
+    respx.get(LIST_URL).mock(return_value=httpx.Response(200, json=board))
+    jobs = [job async for job in source.search(SPEC, frozenset())]
+    assert jobs
+    assert all(job.min_yoe is None and not job.has_description for job in jobs)  # stored years kept
+
+
+def test_content_fixture_is_trimmed() -> None:
+    assert len(json.dumps(load_fixture("greenhouse_stripe_content.json"))) < 30_000

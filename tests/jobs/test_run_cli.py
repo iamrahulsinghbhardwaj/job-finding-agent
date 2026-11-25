@@ -1,10 +1,13 @@
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from pydantic import HttpUrl
 
-from jobagent.jobs.run import format_summary, main
-from jobagent.pipeline.crawl import CrawlResult, SourceOutcome
-from jobagent.pipeline.normalize import NormalizeStats
+from jobagent.core.models import Company, Platform, RawJob, SourceConfig, Tier
+from jobagent.jobs.run import format_filter, format_summary, main, run_filter
+from jobagent.pipeline.crawl import CrawledJob, CrawlResult, SourceOutcome
+from jobagent.pipeline.normalize import NormalizeStats, normalize
 
 REGISTRY = str(Path(__file__).resolve().parents[2] / "companies.yaml")
 
@@ -57,3 +60,61 @@ def test_bad_registry_exits_1(
     path.write_text("companies: []\n", encoding="utf-8")
     assert main(["--path", str(path)]) == 1
     assert "top-level 'search:' mapping" in capsys.readouterr().err
+
+
+def _company(slug: str, tier: Tier) -> Company:
+    return Company(
+        slug=slug,
+        name=slug.title(),
+        tier=tier,
+        india_presence=True,
+        europe_presence=True,
+        us_transfer_path=False,
+        sources=[SourceConfig(platform=Platform.GREENHOUSE, tenant=slug)],
+    )
+
+
+def _crawled(slug: str, job_id: str, title: str, location: str, *, new: bool) -> CrawledJob:
+    raw = RawJob(
+        source_job_id=job_id,
+        company_slug=slug,
+        title=title,
+        location_raw=location,
+        url=HttpUrl("https://example.com/job"),
+        posted_at=datetime(2026, 11, 20, tzinfo=UTC),
+        raw={},
+    )
+    return CrawledJob(normalize(raw, source=f"greenhouse:{slug}"), is_new=new)
+
+
+def test_filter_summary_counts_per_company_and_top_reasons() -> None:
+    companies = [_company("stripe", Tier.T1), _company("tiny", Tier.T1_STARTUP)]
+    result = CrawlResult(
+        run_id=8,
+        outcomes=[],
+        new_job_ids=frozenset(),
+        jobs=[
+            _crawled("stripe", "1", "Senior Backend Engineer", "Dublin", new=True),
+            _crawled("stripe", "2", "Senior Backend Engineer", "London", new=False),
+            _crawled("stripe", "3", "Staff Engineer", "Dublin", new=True),
+            _crawled("stripe", "4", "Senior Backend Engineer", "Paris, France", new=True),
+            _crawled("stripe", "5", "Senior Engineering Manager", "Dublin", new=False),
+            _crawled("stripe", "6", "Engineering Manager", "Dublin", new=False),
+            _crawled("tiny", "1", "Founding Engineer", "Remote", new=True),
+        ],
+    )
+    assert format_filter(*run_filter(result, companies)).splitlines() == [
+        "",
+        "rule filter",
+        "company  jobs  passed  passed_new",
+        "-------  ----  ------  ----------",
+        "stripe   6     2       1",
+        "tiny     1     1       1",
+        "",
+        "filter: 7 -> 3 passed (2 new, 1 labelled Remote (unspecified))",
+        "",
+        "top rejection reasons (of 4 rejected):",
+        "  excluded:manager  2",
+        "  excluded:staff    1",
+        "  location          1",
+    ]

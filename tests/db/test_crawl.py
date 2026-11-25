@@ -251,6 +251,78 @@ async def test_normalized_fields_are_stored(session: Session, http: PoliteClient
     assert (job.title, job.country, job.city) == ("SDE II, Payments", "IN", "Hyderabad")
 
 
+def years(job_id: str, low: int | None, high: int | None = None, *, described: bool = True) -> RawJob:
+    return raw(job_id, "stripe").model_copy(
+        update={"min_yoe": low, "max_yoe": high, "has_description": described}
+    )
+
+
+async def _years_after(session: Session, http: PoliteClient, *listings: RawJob) -> tuple[int | None, ...]:
+    for listing in listings:
+        await run(session, [company("stripe")], Builder({"stripe": FakeSource([listing])}), http)
+    session.expire_all()
+    job = stored(session, "stripe")["1"]
+    return job.min_yoe, job.max_yoe
+
+
+async def test_years_are_stored_with_ranges(session: Session, http: PoliteClient) -> None:
+    assert await _years_after(session, http, years("1", 2, 12)) == (2, 12)
+
+
+async def test_listing_with_a_description_refreshes_years(session: Session, http: PoliteClient) -> None:
+    assert await _years_after(session, http, years("1", 2, 12), years("1", 5)) == (5, None)
+    assert await _years_after(session, http, years("1", None)) == (None, None)  # posting dropped them
+
+
+async def test_listing_without_a_description_keeps_stored_years(session: Session, http: PoliteClient) -> None:
+    kept = await _years_after(session, http, years("1", 2, 12), years("1", None, described=False))
+    assert kept == (2, 12)
+    job = stored(session, "stripe")["1"]
+    assert job.last_seen_run_id != job.first_seen_run_id  # the rest of the row was still refreshed
+
+
+async def test_mixed_batch_refreshes_only_described_jobs(session: Session, http: PoliteClient) -> None:
+    first = [years("1", 4), years("2", 4)]
+    await run(session, [company("stripe")], Builder({"stripe": FakeSource(first)}), http)
+    second = [years("1", None, described=False), years("2", 6)]
+    await run(session, [company("stripe")], Builder({"stripe": FakeSource(second)}), http)
+    session.expire_all()
+    assert {k: v.min_yoe for k, v in stored(session, "stripe").items()} == {"1": 4, "2": 6}
+
+
+# --- jobs handed to the rule filter -----------------------------------------------
+
+
+async def test_result_lists_stored_jobs_flagged_new(session: Session, http: PoliteClient) -> None:
+    fake = FakeSource(jobs_for("stripe", "1", "2"))
+    builder = Builder({"stripe": fake})
+    first = await run(session, [company("stripe")], builder, http)
+    assert [(c.job.source_job_id, c.is_new) for c in first.jobs] == [("1", True), ("2", True)]
+    assert first.jobs[0].job.title_canonical == "Software Engineer II, Payments"
+
+    fake.jobs.insert(0, raw("3", "stripe"))
+    second = await run(session, [company("stripe")], builder, http)
+    assert [(c.job.source_job_id, c.is_new) for c in second.jobs] == [("3", True), ("1", False), ("2", False)]
+
+
+async def test_result_lists_each_job_once_when_queries_overlap(session: Session, http: PoliteClient) -> None:
+    fake = FakeSource(jobs_for("stripe", "1", "2", "1"))
+    result = await run(session, [company("stripe")], Builder({"stripe": fake}), http)
+    assert [c.job.source_job_id for c in result.jobs] == ["1", "2"]
+
+
+async def test_jobs_of_a_failed_store_are_not_listed(
+    session: Session, http: PoliteClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def upsert(session: Session, **kwargs: Any) -> set[int]:
+        raise ValueError("db says no")
+
+    monkeypatch.setattr(crawl_module.repo, "upsert_jobs", upsert)
+    builder = Builder({"stripe": FakeSource(jobs_for("stripe", "1"))})
+    result = await run(session, [company("stripe")], builder, http)
+    assert result.jobs == []
+
+
 # --- staleness: only complete listings count a missed run -------------------------
 
 

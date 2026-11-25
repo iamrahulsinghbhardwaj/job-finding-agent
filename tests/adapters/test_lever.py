@@ -7,7 +7,8 @@ import httpx
 import pytest
 import respx
 
-from jobagent.adapters.lever import LeverSource
+from jobagent.adapters.common import extract_min_yoe
+from jobagent.adapters.lever import LeverSource, _description_text
 from jobagent.core.contracts import JobSource
 from jobagent.core.http import BlockedError, PoliteClient
 from jobagent.core.models import Company, SearchSpec
@@ -146,7 +147,7 @@ async def test_get_details_builds_text(source: LeverSource) -> None:
     assert "<" not in text
     assert "\xa0" not in text
     assert "\n\n" not in text
-    assert detail.min_yoe is None  # parsed later by the pipeline
+    assert detail.min_yoe is None  # this posting states no number of years
 
 
 # --- health ----------------------------------------------------------------
@@ -198,3 +199,13 @@ async def test_health_reports_blocked_empty_and_bad_shape(source: LeverSource) -
 def test_fixtures_are_trimmed() -> None:
     assert len(load_fixture("lever_palantir.json")) == 20
     assert len(json.dumps(load_fixture("lever_palantir_job.json"))) < 8000
+
+
+@respx.mock
+async def test_search_min_yoe_matches_details(source: LeverSource, board: list[dict[str, Any]]) -> None:
+    # The list already carries full descriptions, so min_yoe is known without get_details.
+    mock_board(board)
+    jobs = [job async for job in source.search(SPEC, frozenset())]
+    for job in jobs:
+        assert job.min_yoe == extract_min_yoe(_description_text(job.raw))
+    assert any(job.min_yoe is not None for job in jobs)

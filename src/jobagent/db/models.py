@@ -110,6 +110,7 @@ class Job(Base):
     url: Mapped[str] = mapped_column(Text)
     posted_at: Mapped[datetime | None]
     min_yoe: Mapped[int | None]
+    max_yoe: Mapped[int | None]  # only for an explicit range ("2-12+ years")
     visa_label: Mapped[str | None] = mapped_column(String(50))
     description_hash: Mapped[str | None] = mapped_column(String(64))
     first_seen: Mapped[datetime] = mapped_column(server_default=func.now())

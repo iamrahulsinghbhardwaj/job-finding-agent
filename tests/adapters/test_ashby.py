@@ -144,7 +144,7 @@ async def test_get_details_reuses_board_from_search(source: AshbySource, board: 
     text = detail.description_text
     assert text.startswith("About the Team\n\nOur London-based team builds the backend systems")
     assert "4+ years of professional software engineering experience" in text
-    assert detail.min_yoe is None  # parsed later by the pipeline
+    assert detail.min_yoe == 4  # "4+ years of professional software engineering experience"
 
 
 @respx.mock
@@ -217,3 +217,12 @@ async def test_health_reports_blocked_and_empty_board(source: AshbySource, board
 
 def test_fixture_is_trimmed() -> None:
     assert len(load_fixture("ashby_openai.json")["jobs"]) == 20
+
+
+@respx.mock
+async def test_search_min_yoe_matches_details(source: AshbySource, board: dict[str, Any]) -> None:
+    mock_board(board)
+    jobs = [job async for job in source.search(SPEC, frozenset())]
+    for job in jobs:
+        assert job.min_yoe == (await source.get_details(job.source_job_id)).min_yoe
+    assert any(job.min_yoe is not None for job in jobs)
