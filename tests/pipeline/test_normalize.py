@@ -149,3 +149,21 @@ def test_normalize_all_empty() -> None:
 def test_normalized_job_rejects_bad_country() -> None:
     with pytest.raises(ValidationError):
         NormalizedJob(**{**normalize(raw_job(), source=SOURCE).model_dump(), "country": "IND"})
+
+
+def test_description_text_is_carried_and_never_in_repr() -> None:
+    raw = RawJob(
+        source_job_id="1",
+        company_slug="acme",
+        title="Backend Engineer",
+        location_raw="Bengaluru",
+        url=HttpUrl("https://example.com/1"),
+        posted_at=None,
+        raw={},
+        has_description=True,
+        description_text="PRIVATE posting text",
+    )
+    job = normalize(raw, source="greenhouse:acme")
+    assert job.description_text == "PRIVATE posting text"
+    assert "PRIVATE" not in repr(job)
+    assert "PRIVATE" not in repr(raw)

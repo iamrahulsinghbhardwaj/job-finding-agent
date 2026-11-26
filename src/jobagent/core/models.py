@@ -111,13 +111,16 @@ class RawJob(_Model):
     # From the listing's description. has_description=False means the payload had no description
     # at all, so the years are not known to be absent: the stored values are kept.
     has_description: bool = False
+    # The listing's description as plain text ("" when it had none). Kept in memory for the ranker;
+    # stored only for filter survivors (job.description_text). Never logged.
+    description_text: str = Field(default="", repr=False)
     min_yoe: int | None = Field(default=None, ge=0, le=50)
     max_yoe: int | None = Field(default=None, ge=0, le=50)  # only for an explicit range ("2-12+ years")
 
 
 class JobDetail(_Model):
     source_job_id: NonEmptyStr
-    description_text: str
+    description_text: str = Field(repr=False)
     min_yoe: int | None = Field(default=None, ge=0, le=50)
     max_yoe: int | None = Field(default=None, ge=0, le=50)
 
@@ -159,5 +162,6 @@ class NormalizedJob(_Model):
     url: HttpUrl
     posted_at: AwareDatetime | None
     has_description: bool = False  # see RawJob
+    description_text: str = Field(default="", repr=False)  # see RawJob; never logged
     min_yoe: int | None = Field(default=None, ge=0, le=50)  # None = unknown (the YOE rule passes it)
     max_yoe: int | None = Field(default=None, ge=0, le=50)  # only for an explicit range

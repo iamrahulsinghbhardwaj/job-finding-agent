@@ -66,8 +66,12 @@ Design: [docs/HLD.md](docs/HLD.md)
   - Decided: Europe by country, not hub city (Munich in DE is in scope)
   - Lists live in `pipeline/filter_config.py`; min_yoe read from listings (all four platforms)
   - [ ] Per-company SDE level map (e.g. Google SWE III = the 4–6 YOE band); hook is `filter.sde2_levels`
-- [ ] LLM ranker with Structured Outputs (score, fit, reason) + rule-score fallback
-  - Before ranking: get_details for filter survivors, `filter.with_details`, then re-run `passes` (YOE from the full posting)
+- [x] LLM ranker with Structured Outputs (score, fit, reason) + rule-score fallback
+  - `pipeline/rank.py`: static rubric + profile first, job last in `<job_posting>` tags; 5 at a time; 2 attempts; per-run token budget (`RANK_TOKEN_BUDGET`)
+  - Ranks survivors with no LLM ranking for the current effective profile hash (rule rows re-ranked next run); stale jobs skipped
+  - Description from the listing (stored for survivors only); `get_details` + re-filter only when the listing had none
+  - Prompt caching: gpt-5.4 models do not cache the shared prefix across different jobs (checked live); revisit with gpt-5.6 explicit cache breakpoints
+  - [ ] Pick RANK_MODEL (nano vs mini comparison done)
 - [x] Mark jobs stale after 3 missed runs
 
 **Digest**

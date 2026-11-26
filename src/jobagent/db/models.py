@@ -113,6 +113,8 @@ class Job(Base):
     max_yoe: Mapped[int | None]  # only for an explicit range ("2-12+ years")
     visa_label: Mapped[str | None] = mapped_column(String(50))
     description_hash: Mapped[str | None] = mapped_column(String(64))
+    # Plain-text description, stored for filter survivors only (ranking, evals re-ranking). Never logged.
+    description_text: Mapped[str | None] = mapped_column(Text)
     first_seen: Mapped[datetime] = mapped_column(server_default=func.now())
     last_seen: Mapped[datetime] = mapped_column(server_default=func.now())
     first_seen_run_id: Mapped[int | None] = mapped_column(ForeignKey("run.id", ondelete="SET NULL"))
@@ -123,7 +125,8 @@ class Job(Base):
 
 class Ranking(Base):
     __tablename__ = "ranking"
-    __table_args__ = (UniqueConstraint("job_id", "profile_version"),)
+    # One ranking per job per effective profile (profile version + overrides): new overrides re-rank.
+    __table_args__ = (UniqueConstraint("job_id", "effective_profile_hash"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     job_id: Mapped[int] = mapped_column(ForeignKey("job.id", ondelete="CASCADE"))

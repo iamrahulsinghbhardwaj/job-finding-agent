@@ -94,19 +94,7 @@ class AmazonSource:
         item = self._cache.get(job_id)
         if item is None:
             raise FetchError(f"job {job_id} not in the last search; search first", host=HOST)
-        description = _text(item.get("description"))
-        basic = _text(item.get("basic_qualifications"))
-        preferred = _text(item.get("preferred_qualifications"))
-        parts = [
-            description,
-            f"Basic qualifications\n{basic}" if basic else "",
-            f"Preferred qualifications\n{preferred}" if preferred else "",
-        ]
-        return JobDetail(
-            source_job_id=job_id,
-            description_text="\n".join(part for part in parts if part),
-            **years_fields(_yoe(item)),
-        )
+        return JobDetail(source_job_id=job_id, description_text=_full_text(item), **years_fields(_yoe(item)))
 
     async def health_check(self) -> HealthReport:
         params: Params = [*self._category_params(), ("sort", "recent"), ("offset", 0), ("result_limit", 1)]
@@ -178,10 +166,11 @@ class AmazonSource:
                 "url": SITE + item["job_path"],
                 "posted_at": _parse_posted_date(item.get("posted_date")),
                 "raw": item,
-                # the search results carry the qualifications
+                # the search results carry the description and qualifications
                 "has_description": bool(
                     _text(item.get("basic_qualifications")) or _text(item.get("description"))
                 ),
+                "description_text": _full_text(item),
                 **years_fields(_yoe(item)),
             }
         )
@@ -204,6 +193,18 @@ def _yoe(item: dict[str, Any]) -> YearsRequired:
     qualifications: "8+ years preferred" is not a minimum."""
     basic = extract_yoe("Basic qualifications\n" + _text(item.get("basic_qualifications")))
     return basic if basic.min is not None else extract_yoe(_text(item.get("description")))
+
+
+def _full_text(item: dict[str, Any]) -> str:
+    """Description, then basic and preferred qualifications, as one text (for ranking)."""
+    basic = _text(item.get("basic_qualifications"))
+    preferred = _text(item.get("preferred_qualifications"))
+    parts = [
+        _text(item.get("description")),
+        f"Basic qualifications\n{basic}" if basic else "",
+        f"Preferred qualifications\n{preferred}" if preferred else "",
+    ]
+    return "\n".join(part for part in parts if part)
 
 
 def _text(html: Any) -> str:

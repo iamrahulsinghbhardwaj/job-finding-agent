@@ -208,4 +208,6 @@ async def test_search_min_yoe_matches_details(source: LeverSource, board: list[d
     jobs = [job async for job in source.search(SPEC, frozenset())]
     for job in jobs:
         assert job.min_yoe == extract_min_yoe(_description_text(job.raw))
+        assert job.description_text == _description_text(job.raw)  # the ranker needs no extra request
     assert any(job.min_yoe is not None for job in jobs)
+    assert all(job.description_text for job in jobs)

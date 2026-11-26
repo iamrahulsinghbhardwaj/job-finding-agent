@@ -79,6 +79,9 @@ class CrawlResult:
     outcomes: list[SourceOutcome]
     new_job_ids: frozenset[int]
     jobs: list[CrawledJob] = field(default_factory=list)  # every job stored this run, one per id
+    # source_key -> the source that searched this run (get_details needs the same instance: Amazon
+    # serves details from its last search). Valid only while the crawl's PoliteClient is open.
+    sources: dict[str, JobSource] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -95,6 +98,7 @@ class _Fetched:
     raws: list[RawJob]
     full_listing: bool
     error: str | None
+    source: JobSource | None = None
 
 
 async def crawl(
@@ -131,16 +135,21 @@ async def crawl(
 
     new_ids: set[int] = set()
     jobs: list[CrawledJob] = []
+    sources: dict[str, JobSource] = {}
     for plan, result in zip(plans, fetched, strict=True):
         stored = _store(session, run_id, plan, result)
         session.commit()
         new_ids |= stored.new_job_ids
         outcomes.append(stored.outcome)
         jobs += stored.jobs
+        if result.source is not None and result.error is None:
+            sources[source_key(plan.config)] = result.source
 
     repo.finish_run(session, run_id, {o.source: o.counts() for o in outcomes})
     session.commit()
-    return CrawlResult(run_id=run_id, outcomes=outcomes, new_job_ids=frozenset(new_ids), jobs=jobs)
+    return CrawlResult(
+        run_id=run_id, outcomes=outcomes, new_job_ids=frozenset(new_ids), jobs=jobs, sources=sources
+    )
 
 
 async def _fetch(
@@ -154,7 +163,7 @@ async def _fetch(
                 raws.append(job)
     except Exception as exc:  # isolation: one source must never stop the run
         return _Fetched(raws, full_listing=False, error=_describe(exc))
-    return _Fetched(raws, full_listing=source.full_listing, error=None)
+    return _Fetched(raws, full_listing=source.full_listing, error=None, source=source)
 
 
 @dataclass(frozen=True)

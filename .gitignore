@@ -28,3 +28,6 @@ credentials.json
 
 # Local output (rendered digests, debug dumps)
 out/
+
+# Downloaded caches (tiktoken token table)
+.cache/

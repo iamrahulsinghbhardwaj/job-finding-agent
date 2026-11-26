@@ -22,7 +22,7 @@ def test_dry_run_reports_names_not_values(
     out = capsys.readouterr().out
     assert "OPENAI_API_KEY: present" in out
     assert "DATABASE_URL: missing" in out
-    assert "1/10 settings present" in out
+    assert "1/11 settings present" in out
     assert "sk-super-secret-value" not in out
 
 

@@ -224,5 +224,8 @@ async def test_search_min_yoe_matches_details(source: AshbySource, board: dict[s
     mock_board(board)
     jobs = [job async for job in source.search(SPEC, frozenset())]
     for job in jobs:
-        assert job.min_yoe == (await source.get_details(job.source_job_id)).min_yoe
+        detail = await source.get_details(job.source_job_id)
+        assert job.min_yoe == detail.min_yoe
+        assert job.description_text == detail.description_text  # the ranker needs no extra request
     assert any(job.min_yoe is not None for job in jobs)
+    assert all(job.description_text for job in jobs)

@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     # LLM
     openai_api_key: SecretStr | None = None
     rank_model: str | None = None
+    rank_token_budget: int | None = None  # tokens per run for ranking; default in pipeline/rank.py
     profile_model: str | None = None
 
     # CV

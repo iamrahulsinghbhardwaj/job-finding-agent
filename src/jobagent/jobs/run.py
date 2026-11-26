@@ -4,33 +4,47 @@
     python -m jobagent.jobs.run                     # crawl every company in companies.yaml
     python -m jobagent.jobs.run --company amazon    # crawl a subset (repeatable)
 
-Crawl (fetch, normalize, store, count new jobs), then the rule filter over every job fetched this
-run: counts per company and the top rejection reasons. No ranking or email yet.
+Crawl (fetch, normalize, store, count new jobs), the rule filter over every job fetched this run
+(counts per company, top rejection reasons), then the LLM ranker over filter survivors that have
+no LLM ranking for the current effective profile. Ranking needs OPENAI_API_KEY, RANK_MODEL,
+PROFILE_MODEL and CV_BLOB_SAS_URL; without them it is skipped. Locally it prints the top jobs;
+under CI (Actions logs are public) only counts. No email yet.
 """
 
 import argparse
 import asyncio
 import logging
+import os
 import sys
 from collections import Counter
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Any
 
+from openai import AsyncOpenAI
 from sqlalchemy.orm import Session
 
-from jobagent.core.http import PoliteClient
-from jobagent.core.models import Company, SearchSpec, Tier
+from jobagent.core.http import FetchError, PoliteClient
+from jobagent.core.llm import LlmError, LlmLedger
+from jobagent.core.models import Company, NormalizedJob, SearchSpec, Tier
 from jobagent.core.registry import RegistryError, load_registry, load_search_specs
 from jobagent.core.settings import Settings
+from jobagent.core.tokens import TokenizerError, ensure_encoding_file, load_tokenizer
 from jobagent.db.session import make_engine
 from jobagent.pipeline.crawl import CrawlResult, SourceOutcome, crawl
 from jobagent.pipeline.filter import FilterReport, filter_jobs
 from jobagent.pipeline.normalize import NormalizeStats
+from jobagent.pipeline.profile import CvError, OverridesError, ProfileError, ensure_profile
+from jobagent.pipeline.rank import DEFAULT_TOKEN_BUDGET, RankRun, rank_survivors
 
 COLUMNS = ("company", "sources", "fetched", "new", "errors", "unknown_loc")
 FILTER_COLUMNS = ("company", "jobs", "passed", "passed_new")
 TOP_REASONS = 10
+TOP_JOBS = 10
+RANK_SETTINGS = ("openai_api_key", "rank_model", "profile_model", "cv_blob_sas_url")
+RANK_ERRORS = (CvError, OverridesError, ProfileError, FetchError, LlmError, TokenizerError)
+RANK_OPTIONS = {"reasoning_effort": "low"}
 
 
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
@@ -112,13 +126,60 @@ def format_summary(result: CrawlResult) -> str:
     return "\n".join(lines)
 
 
-def run_filter(result: CrawlResult, companies: Sequence[Company]) -> tuple[FilterReport, Counter[str]]:
-    """The rule filter over every job stored this run; also counts survivors first seen this run."""
+def filter_run(
+    result: CrawlResult, companies: Sequence[Company]
+) -> tuple[list[NormalizedJob], FilterReport, Counter[str]]:
+    """The rule filter over every job stored this run: survivors, the report, and survivors first
+    seen this run per company."""
     by_slug = {company.slug: company for company in companies}
     kept, report = filter_jobs((crawled.job for crawled in result.jobs), by_slug)
     new = {(c.job.source, c.job.source_job_id) for c in result.jobs if c.is_new}
     passed_new = Counter(job.company_slug for job in kept if (job.source, job.source_job_id) in new)
+    return kept, report, passed_new
+
+
+def run_filter(result: CrawlResult, companies: Sequence[Company]) -> tuple[FilterReport, Counter[str]]:
+    _, report, passed_new = filter_run(result, companies)
     return report, passed_new
+
+
+def format_rank(run: RankRun, ledger: LlmLedger) -> str:
+    """Counts only: safe for public logs."""
+    r = run.report
+    fallback = ", ".join(f"{reason} {n}" for reason, n in sorted(r.fallback.items())) or "none"
+    cost = f"${ledger.cost_usd:.4f}" + (f" (+{ledger.unpriced} unpriced calls)" if ledger.unpriced else "")
+    return "\n".join(
+        [
+            "",
+            "ranking",
+            f"  to rank: {r.candidates:,} survivors without an LLM ranking for this profile "
+            f"({r.skipped_stale:,} stale skipped, {r.refiltered_out:,} dropped by full-posting years)",
+            f"  ranked by LLM: {r.llm:,}; rule score: {sum(r.fallback.values()):,} ({fallback})",
+            f"  descriptions: {r.truncated:,} truncated, {r.no_description:,} missing, "
+            f"{r.details_fetched:,} fetched, {r.descriptions_saved:,} saved; "
+            f"fit corrected: {r.fit_mismatch:,}",
+            f"  tokens: {ledger.input_tokens:,} in ({ledger.cached_ratio:.0%} cached) / "
+            f"{ledger.output_tokens:,} out; budget {r.budget_used:,} of {r.budget_limit:,}; cost {cost}",
+        ]
+    )
+
+
+def format_top(run: RankRun, n: int = TOP_JOBS) -> str:
+    """The best-scored jobs with fit and reason: job data, so local terminals only (never CI)."""
+    best = sorted(run.ranked, key=lambda r: (-r.score, r.company.slug, r.job.title))[:n]
+    if not best:
+        return ""
+    lines = ["", f"top {len(best)} by score"]
+    for r in best:
+        model = " [rule]" if r.fallback else ""
+        lines.append(f"  {r.score:>3} {r.fit:<6} {r.company.name} | {r.job.title}{model}")
+        lines.append(f"             {r.reason}")
+        lines.append(f"             {r.job.url}")
+    return "\n".join(lines)
+
+
+def in_ci() -> bool:
+    return os.environ.get("CI", "").lower() == "true"
 
 
 def format_filter(report: FilterReport, passed_new: Counter[str]) -> str:
@@ -140,9 +201,67 @@ def format_filter(report: FilterReport, passed_new: Counter[str]) -> str:
     return "\n".join(lines)
 
 
-async def _crawl(session: Session, companies: list[Company], specs: dict[Tier, SearchSpec]) -> CrawlResult:
-    async with PoliteClient() as http:
-        return await crawl(session, companies, specs, http=http)
+@dataclass(frozen=True)
+class RunOutput:
+    crawl: CrawlResult
+    survivors: list[NormalizedJob]
+    report: FilterReport
+    passed_new: Counter[str]
+    rank: RankRun | None = None
+    ledger: LlmLedger | None = None
+    rank_note: str | None = None  # why ranking was skipped or failed (safe to print)
+
+
+async def _run(
+    session: Session, companies: list[Company], specs: dict[Tier, SearchSpec], settings: Settings
+) -> RunOutput:
+    async with PoliteClient() as http:  # open for the whole run: ranking may call get_details
+        result = await crawl(session, companies, specs, http=http)
+        survivors, report, passed_new = filter_run(result, companies)
+        output = RunOutput(result, survivors, report, passed_new)
+        missing = [name.upper() for name in RANK_SETTINGS if getattr(settings, name) is None]
+        if missing:
+            return _with(output, rank_note=f"ranking skipped: missing {', '.join(missing)}")
+        ledger = LlmLedger()
+        client = AsyncOpenAI(api_key=settings.require("openai_api_key"))
+        try:
+            await ensure_encoding_file(http)
+            overrides = settings.profile_overrides_sas_url
+            profile = await ensure_profile(
+                session,
+                http=http,
+                client=client,
+                cv_url=settings.require("cv_blob_sas_url"),
+                model=settings.require("profile_model"),
+                overrides_url=overrides.get_secret_value() if overrides else None,
+                ledger=ledger,
+            )
+            session.commit()
+            ranked = await rank_survivors(
+                session,
+                survivors,
+                {c.slug: c for c in companies},
+                sources=result.sources,
+                client=client,
+                profile=profile,
+                model=settings.require("rank_model"),
+                tokenizer=load_tokenizer(),
+                token_budget=settings.rank_token_budget or DEFAULT_TOKEN_BUDGET,
+                ledger=ledger,
+                run_id=result.run_id,
+                options=RANK_OPTIONS,
+            )
+            session.commit()
+        except RANK_ERRORS as exc:
+            session.rollback()
+            return _with(output, ledger=ledger, rank_note=f"ranking failed: {exc}")
+        finally:
+            await client.close()
+        return _with(output, rank=ranked, ledger=ledger)
+
+
+def _with(output: RunOutput, **changes: Any) -> RunOutput:
+    return replace(output, **changes)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -173,11 +292,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     engine = make_engine(settings.require("database_url"))
     try:
         with Session(engine) as session:
-            result = asyncio.run(_crawl(session, companies, specs))
+            output = asyncio.run(_run(session, companies, specs, settings))
     finally:
         engine.dispose()
-    print(format_summary(result))
-    print(format_filter(*run_filter(result, companies)))
+    print(format_summary(output.crawl))
+    print(format_filter(output.report, output.passed_new))
+    if output.rank is not None and output.ledger is not None:
+        print(format_rank(output.rank, output.ledger))
+        if not in_ci():
+            print(format_top(output.rank))
+    if output.rank_note:
+        print(f"\n{output.rank_note}", file=sys.stderr)
+        return 1 if output.rank_note.startswith("ranking failed") else 0
     return 0
 
 

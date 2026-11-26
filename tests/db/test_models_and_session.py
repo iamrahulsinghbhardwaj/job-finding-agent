@@ -32,7 +32,7 @@ def test_tables_and_key_constraints() -> None:
     tables = Base.metadata.tables
     assert set(tables) == {"company", "source", "run", "job", "ranking", "dead_letter", "cv_profile"}
     assert "uq_job_company_id_source_job_id" in {c.name for c in tables["job"].constraints}  # dedupe key
-    assert "uq_ranking_job_id_profile_version" in {c.name for c in tables["ranking"].constraints}
+    assert "uq_ranking_job_id_effective_profile_hash" in {c.name for c in tables["ranking"].constraints}
     assert "uq_source_company_id_platform_tenant" in {c.name for c in tables["source"].constraints}
 
 
@@ -45,4 +45,4 @@ def test_jsonb_columns() -> None:
 
 def test_single_migration_head() -> None:
     script = ScriptDirectory.from_config(Config(str(REPO_ROOT / "alembic.ini")))
-    assert script.get_heads() == ["0005"]
+    assert script.get_heads() == ["0006"]

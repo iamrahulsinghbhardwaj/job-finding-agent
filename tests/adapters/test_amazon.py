@@ -472,4 +472,7 @@ async def test_search_min_yoe_matches_details(source: AmazonSource, page: dict[s
     by_id = {job.source_job_id: job.min_yoe for job in jobs}
     assert (by_id["10611406"], by_id["10610387"]) == (3, 5)
     for job in jobs:
-        assert job.min_yoe == (await source.get_details(job.source_job_id)).min_yoe
+        detail = await source.get_details(job.source_job_id)
+        assert job.min_yoe == detail.min_yoe
+        assert job.description_text == detail.description_text  # the ranker needs no extra request
+        assert "Basic qualifications" in job.description_text

@@ -207,6 +207,7 @@ async def test_board_call_asks_for_content_and_reads_min_yoe(source: GreenhouseS
     jobs = {job.source_job_id: job async for job in source.search(SPEC, frozenset())}
     assert route.call_count == 1
     assert all(job.has_description for job in jobs.values())
+    assert all(len(job.description_text) > 500 for job in jobs.values())  # full text, for the ranker
     assert {job_id: job.min_yoe for job_id, job in jobs.items()} == {
         "8172510": 10,
         "8332467": 8,
@@ -222,6 +223,7 @@ async def test_board_without_content_leaves_min_yoe_unknown(
     jobs = [job async for job in source.search(SPEC, frozenset())]
     assert jobs
     assert all(job.min_yoe is None and not job.has_description for job in jobs)  # stored years kept
+    assert all(job.description_text == "" for job in jobs)
 
 
 def test_content_fixture_is_trimmed() -> None:

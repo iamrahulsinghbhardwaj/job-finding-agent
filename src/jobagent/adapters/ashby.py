@@ -104,7 +104,7 @@ class AshbySource:
 
 def _years(item: dict[str, Any]) -> dict[str, Any]:
     text = _description_text(item)
-    return {"has_description": bool(text), **years_fields(extract_yoe(text))}
+    return {"has_description": bool(text), "description_text": text, **years_fields(extract_yoe(text))}
 
 
 def _description_text(item: dict[str, Any]) -> str:

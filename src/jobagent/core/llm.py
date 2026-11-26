@@ -9,9 +9,10 @@ CV and job text, so they never reach the (public) logs.
 import logging
 import re
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import Any
 
 import openai
 from openai import AsyncOpenAI
@@ -27,7 +28,14 @@ _SNAPSHOT = re.compile(r"-\d{4}-\d{2}-\d{2}$")  # "gpt-5.4-mini-2026-03-17" -> "
 
 
 class LlmError(Exception):
-    """The call failed, was refused, or returned nothing usable. Message is safe to log."""
+    """The call failed, was refused, or returned nothing usable. Message is safe to log.
+
+    `call` is set when the request was answered (and billed) but unusable: refused, no output.
+    """
+
+    def __init__(self, message: str, call: "LlmCall | None" = None) -> None:
+        super().__init__(message)
+        self.call = call
 
 
 @dataclass(frozen=True)
@@ -64,6 +72,15 @@ class LlmLedger:
         return sum(c.input_tokens for c in self.calls)
 
     @property
+    def cached_tokens(self) -> int:
+        return sum(c.cached_tokens for c in self.calls)
+
+    @property
+    def cached_ratio(self) -> float:
+        """Share of input tokens served from OpenAI's prompt cache (0.0 with no calls)."""
+        return self.cached_tokens / self.input_tokens if self.input_tokens else 0.0
+
+    @property
     def output_tokens(self) -> int:
         return sum(c.output_tokens for c in self.calls)
 
@@ -93,13 +110,17 @@ async def parse[T: BaseModel](
     schema: type[T],
     purpose: str,
     ledger: LlmLedger | None = None,
+    options: Mapping[str, Any] | None = None,
     clock: Callable[[], float] = time.perf_counter,
 ) -> tuple[T, LlmCall]:
-    """One Structured Outputs call: the parsed `schema` instance and the recorded call."""
+    """One Structured Outputs call: the parsed `schema` instance and the recorded call.
+
+    `options` are passed through to the API (prompt_cache_key, reasoning_effort, max_completion_tokens).
+    """
     started = clock()
     try:
         completion = await client.chat.completions.parse(
-            model=model, messages=list(messages), response_format=schema
+            model=model, messages=list(messages), response_format=schema, **dict(options or {})
         )
     except openai.APIStatusError as exc:
         # Status and error code only: OpenAI's message can quote the request.
@@ -137,11 +158,11 @@ async def parse[T: BaseModel](
 
     message = completion.choices[0].message if completion.choices else None
     if message is None:
-        raise LlmError(f"OpenAI returned no choices for {purpose}")
+        raise LlmError(f"OpenAI returned no choices for {purpose}", call)
     if message.refusal:
-        raise LlmError(f"model refused the {purpose} request")
+        raise LlmError(f"model refused the {purpose} request", call)
     if message.parsed is None:
-        raise LlmError(f"no parsed output for {purpose}")
+        raise LlmError(f"no parsed output for {purpose}", call)
     return message.parsed, call
 
 

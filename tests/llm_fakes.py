@@ -77,3 +77,20 @@ class FakeOpenAI:
     @property
     def client(self) -> AsyncOpenAI:
         return cast(AsyncOpenAI, self)
+
+
+class WordTokenizer:
+    """Fake tokenizer: one token per whitespace-separated word (tests never load tiktoken's table)."""
+
+    def __init__(self) -> None:
+        self._vocab: list[str] = []
+
+    def encode(self, text: str) -> list[int]:
+        ids = []
+        for word in text.split():
+            self._vocab.append(word)
+            ids.append(len(self._vocab) - 1)
+        return ids
+
+    def decode(self, tokens: list[int]) -> str:
+        return " ".join(self._vocab[t] for t in tokens)

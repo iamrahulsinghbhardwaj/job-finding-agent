@@ -8,13 +8,15 @@ from collections.abc import Iterable, Mapping, Sequence
 from decimal import Decimal
 from typing import Any, cast
 
-from sqlalchemy import CursorResult, Executable, func, select, update
+from sqlalchemy import CursorResult, Executable, bindparam, func, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from jobagent.core import models as core
 from jobagent.core.models import NormalizedJob, Platform
-from jobagent.db.models import Company, CvProfile, DeadLetter, Job, Run, Source
+from jobagent.db.models import Company, CvProfile, DeadLetter, Job, Ranking, Run, Source
+
+JobKey = tuple[str, str]  # (company slug, source job id): a job's identity across runs
 
 ACTIVE = "active"
 STALE = "stale"
@@ -238,3 +240,80 @@ def add_cv_profile(session: Session, *, key: str, model: str, profile_json: Mapp
     session.add(row)
     session.flush()
     return row.id
+
+
+# --- ranking -------------------------------------------------------------------------------------
+
+
+def job_ids_for(session: Session, keys: Iterable[JobKey]) -> dict[JobKey, tuple[int, str]]:
+    """(company slug, source job id) -> (job id, status) for the jobs that exist."""
+    wanted = list(dict.fromkeys(keys))
+    found: dict[JobKey, tuple[int, str]] = {}
+    for start in range(0, len(wanted), _BATCH):
+        chunk = wanted[start : start + _BATCH]
+        rows = session.execute(
+            select(Company.slug, Job.source_job_id, Job.id, Job.status)
+            .join(Company, Company.id == Job.company_id)
+            .where(tuple_(Company.slug, Job.source_job_id).in_(chunk))
+        )
+        for slug, source_job_id, job_id, status in rows:
+            found[(slug, source_job_id)] = (job_id, status)
+    return found
+
+
+def save_descriptions(session: Session, texts: Mapping[int, str]) -> int:
+    """Store description_text for these job ids (filter survivors only). Returns rows updated."""
+    if not texts:
+        return 0
+    table = Job.metadata.tables["job"]  # Core table: executemany UPDATE with bound parameters
+    stmt = update(table).where(table.c.id == bindparam("job_id")).values(description_text=bindparam("text"))
+    rows = [{"job_id": job_id, "text": text} for job_id, text in texts.items()]
+    session.execute(stmt, rows)
+    return len(rows)
+
+
+def ranked_job_ids(
+    session: Session, job_ids: Iterable[int], effective_profile_hash: str, *, exclude_model: str
+) -> set[int]:
+    """Jobs already ranked for this effective profile, by any model except `exclude_model`
+    (the rule fallback, which the LLM should replace on a later run)."""
+    ids = list(set(job_ids))
+    ranked: set[int] = set()
+    for start in range(0, len(ids), _BATCH):
+        ranked.update(
+            session.scalars(
+                select(Ranking.job_id).where(
+                    Ranking.job_id.in_(ids[start : start + _BATCH]),
+                    Ranking.effective_profile_hash == effective_profile_hash,
+                    Ranking.model != exclude_model,
+                )
+            )
+        )
+    return ranked
+
+
+def upsert_rankings(session: Session, rows: Sequence[Mapping[str, Any]]) -> int:
+    """Insert rankings; an existing (job, effective profile) row is replaced (e.g. rule -> LLM).
+
+    Each row: job_id, profile_version, effective_profile_hash, model, score, fit, reason.
+    """
+    for start in range(0, len(rows), _BATCH):
+        stmt = pg_insert(Ranking).values([dict(r) for r in rows[start : start + _BATCH]])
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[Ranking.job_id, Ranking.effective_profile_hash],
+            set_={
+                "profile_version": stmt.excluded.profile_version,
+                "model": stmt.excluded.model,
+                "score": stmt.excluded.score,
+                "fit": stmt.excluded.fit,
+                "reason": stmt.excluded.reason,
+                "ranked_at": func.now(),
+            },
+        )
+        session.execute(stmt)
+    return len(rows)
+
+
+def set_run_cost(session: Session, run_id: int, cost_usd: Decimal) -> None:
+    if _rowcount(session, update(Run).where(Run.id == run_id).values(cost_usd=cost_usd)) != 1:
+        raise LookupError(f"run {run_id} not found")
