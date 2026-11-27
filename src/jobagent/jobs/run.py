@@ -1,14 +1,17 @@
 """Run entry point.
 
-    python -m jobagent.jobs.run --dry-run           # settings check only (names, never values)
-    python -m jobagent.jobs.run                     # crawl every company in companies.yaml
+    python -m jobagent.jobs.run --check-settings    # settings check only (names, never values)
+    python -m jobagent.jobs.run --dry-run           # full run; write out/digest.html, send nothing
+    python -m jobagent.jobs.run                     # full run (sending arrives with the Gmail brick)
     python -m jobagent.jobs.run --company amazon    # crawl a subset (repeatable)
 
 Crawl (fetch, normalize, store, count new jobs), the rule filter over every job fetched this run
 (counts per company, top rejection reasons), then the LLM ranker over filter survivors that have
 no LLM ranking for the current effective profile. Ranking needs OPENAI_API_KEY, RANK_MODEL,
 PROFILE_MODEL and CV_BLOB_SAS_URL; without them it is skipped. Locally it prints the top jobs;
-under CI (Actions logs are public) only counts. No email yet.
+under CI (Actions logs are public) only counts. Then the digest (digest/select, digest/render):
+written to out/digest.html. Nothing is sent or recorded as emailed yet: the Gmail brick will send,
+then record Run.emailed_job_ids. No new jobs -> no digest file.
 """
 
 import argparse
@@ -19,6 +22,7 @@ import sys
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -32,10 +36,12 @@ from jobagent.core.registry import RegistryError, load_registry, load_search_spe
 from jobagent.core.settings import Settings
 from jobagent.core.tokens import TokenizerError, ensure_encoding_file, load_tokenizer
 from jobagent.db.session import make_engine
+from jobagent.digest.render import write_digest
+from jobagent.digest.select import Digest, select_digest
 from jobagent.pipeline.crawl import CrawlResult, SourceOutcome, crawl
 from jobagent.pipeline.filter import FilterReport, filter_jobs
 from jobagent.pipeline.normalize import NormalizeStats
-from jobagent.pipeline.profile import CvError, OverridesError, ProfileError, ensure_profile
+from jobagent.pipeline.profile import CvError, OverridesError, ProfileError, ProfileSync, ensure_profile
 from jobagent.pipeline.rank import DEFAULT_TOKEN_BUDGET, RankRun, rank_survivors
 
 COLUMNS = ("company", "sources", "fetched", "new", "errors", "unknown_loc")
@@ -50,9 +56,14 @@ RANK_OPTIONS = {"reasoning_effort": "low"}
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="jobagent.jobs.run", description="Run the job agent.")
     parser.add_argument(
-        "--dry-run",
+        "--check-settings",
         action="store_true",
         help="Load settings, report which are present (names only) and exit.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Full run, but write the digest to out/digest.html instead of sending it.",
     )
     parser.add_argument("--path", type=Path, default=Path("companies.yaml"), help="registry file")
     parser.add_argument(
@@ -210,6 +221,7 @@ class RunOutput:
     rank: RankRun | None = None
     ledger: LlmLedger | None = None
     rank_note: str | None = None  # why ranking was skipped or failed (safe to print)
+    profile: ProfileSync | None = None
 
 
 async def _run(
@@ -257,7 +269,7 @@ async def _run(
             return _with(output, ledger=ledger, rank_note=f"ranking failed: {exc}")
         finally:
             await client.close()
-        return _with(output, rank=ranked, ledger=ledger)
+        return _with(output, rank=ranked, ledger=ledger, profile=profile)
 
 
 def _with(output: RunOutput, **changes: Any) -> RunOutput:
@@ -267,7 +279,7 @@ def _with(output: RunOutput, **changes: Any) -> RunOutput:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     settings = Settings()
-    if args.dry_run:
+    if args.check_settings:
         _report_settings(settings)
         return 0
 
@@ -290,9 +302,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)  # one INFO line per request floods public logs
     engine = make_engine(settings.require("database_url"))
+    digest_line: str | None = None
     try:
         with Session(engine) as session:
             output = asyncio.run(_run(session, companies, specs, settings))
+            if output.profile is not None:
+                digest_line = _write_digest(session, output.profile, dry_run=args.dry_run)
     finally:
         engine.dispose()
     print(format_summary(output.crawl))
@@ -301,10 +316,28 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(format_rank(output.rank, output.ledger))
         if not in_ci():
             print(format_top(output.rank))
+    if digest_line:
+        print(f"\n{digest_line}")
     if output.rank_note:
         print(f"\n{output.rank_note}", file=sys.stderr)
         return 1 if output.rank_note.startswith("ranking failed") else 0
     return 0
+
+
+def format_digest_counts(digest: Digest) -> str:
+    """Counts only: safe for public logs."""
+    parts = ", ".join(f"{s.name}: {len(s.full)} full + {len(s.compact)} compact" for s in digest.sections)
+    return f"digest: {digest.count} lines ({len(digest.job_ids)} jobs); {parts}"
+
+
+def _write_digest(session: Session, profile: ProfileSync, *, dry_run: bool) -> str:
+    digest = select_digest(session, profile.effective_hash, datetime.now(UTC).date())
+    if digest is None:
+        return "digest: no new jobs, no digest"
+    path = write_digest(digest)
+    # Nothing is sent yet, so nothing is recorded as emailed (the Gmail brick sends, then records).
+    mode = "dry run, not sent" if dry_run else "not sent: sending arrives with the Gmail brick"
+    return f"{format_digest_counts(digest)} -> {path} ({mode})"
 
 
 if __name__ == "__main__":

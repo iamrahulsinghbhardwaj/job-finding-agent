@@ -145,6 +145,8 @@ async def test_survivor_descriptions_are_stored(session: Session) -> None:
     await rank(session, jobs, FakeOpenAI(answer(), answer()), run_id)
     texts = {sid: text for sid, text in session.execute(select(Job.source_job_id, Job.description_text))}
     assert texts == {"1": DESCRIPTION, "2": None}
+    hashes = {sid: h for sid, h in session.execute(select(Job.source_job_id, Job.description_hash))}
+    assert hashes == {"1": repo.description_hash(DESCRIPTION), "2": None}
 
 
 async def test_already_ranked_jobs_make_no_llm_call(session: Session) -> None:

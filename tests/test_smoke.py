@@ -14,11 +14,11 @@ def test_package_imports(module: str) -> None:
     importlib.import_module(f"jobagent.{module}")
 
 
-def test_dry_run_reports_names_not_values(
+def test_check_settings_reports_names_not_values(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "sk-super-secret-value")
-    assert main(["--dry-run"]) == 0
+    assert main(["--check-settings"]) == 0
     out = capsys.readouterr().out
     assert "OPENAI_API_KEY: present" in out
     assert "DATABASE_URL: missing" in out
@@ -33,7 +33,7 @@ def test_full_run_without_database_url_exits_2(capsys: pytest.CaptureFixture[str
 
 def test_module_entry_point_runs() -> None:
     result = subprocess.run(
-        [sys.executable, "-m", "jobagent.jobs.run", "--dry-run"],
+        [sys.executable, "-m", "jobagent.jobs.run", "--check-settings"],
         capture_output=True,
         text=True,
         timeout=30,

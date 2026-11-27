@@ -75,7 +75,11 @@ Design: [docs/HLD.md](docs/HLD.md)
 - [x] Mark jobs stale after 3 missed runs
 
 **Digest**
-- [ ] HTML template: Tier 1 India (all), Tier 1 Europe (top 10); show the ORIGINAL title (`title`), never `title_canonical`
+- [x] HTML template: Tier 1 India, Tier 1 Europe; show the ORIGINAL title (`title`), never `title_canonical`
+  - `digest/select.py` + `digest/render.py` + `digest/templates/digest.html.j2`; `--dry-run` writes `out/digest.html`
+  - Every section: all High in full, top 10 Medium in full, every other Medium as a compact row; Low never sent
+  - Exact duplicates (company + title + city + description hash) merged into one line
+  - [ ] Gmail clips HTML over ~102 KB: the first (backlog) digest is ~129 KB, half of it inline styles
 - [x] Run summary: include `NormalizeStats.as_counts()` per source in `Run.per_source_counts` (unknown-location share, target < 5%)
 - [ ] Send via Gmail; idempotent via `Run.emailed_job_ids`; no email when nothing is new
 - [ ] **Gate:** 7 consecutive scheduled runs, 0 duplicate emails

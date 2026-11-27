@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>{{ digest.subject }}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f4f5;">
+<tr><td align="center" style="padding:16px 8px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background-color:#ffffff;border-radius:8px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#18181b;">
+<tr><td style="padding:20px 20px 4px 20px;">
+<div style="font-size:20px;line-height:26px;font-weight:700;">{{ digest.subject }}</div>
+<div style="font-size:13px;line-height:18px;color:#71717a;padding-top:4px;">Job digest &middot; {{ digest.today.strftime("%a %d %b %Y") }}</div>
+</td></tr>
+{% for section in digest.sections %}
+<tr><td style="padding:20px 20px 6px 20px;">
+<div style="font-size:16px;line-height:22px;font-weight:700;border-bottom:2px solid #e4e4e7;padding-bottom:6px;">{{ section.name }} <span style="font-weight:400;color:#71717a;">({{ section.count }})</span></div>
+{% if section.stars %}
+<div style="font-size:12px;line-height:16px;color:#71717a;padding-top:4px;">&#9733; company with a US transfer path</div>
+{% endif %}
+</td></tr>
+{% for line in section.full %}
+<tr><td style="padding:10px 20px;border-bottom:1px solid #f4f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr>
+<td width="48" valign="top" style="width:48px;padding-right:12px;">
+<div style="width:44px;height:28px;line-height:28px;text-align:center;border-radius:6px;font-size:14px;font-weight:700;color:#ffffff;background-color:{{ badge_color(line.fit) }};">{{ line.score }}</div>
+</td>
+<td valign="top">
+<div style="font-size:15px;line-height:20px;font-weight:600;">{% if line.star %}<span style="color:#ca8a04;">&#9733;</span> {% endif %}{{ line.company }} &middot; {{ line.title }}</div>
+<div style="font-size:13px;line-height:18px;color:#52525b;padding-top:2px;">{{ line.location }} &middot; {{ line.yoe }} &middot; {{ days_text(line.days_posted) }}{% if line.rule %} &middot; <span style="color:#a1a1aa;">rule score</span>{% endif %}{% if line.duplicates %} &middot; +{{ line.duplicates }} identical posting{{ "s" if line.duplicates > 1 }}{% endif %}</div>
+<div style="font-size:13px;line-height:18px;color:#3f3f46;padding-top:4px;">{{ line.reason }}</div>
+<div style="padding-top:6px;"><a href="{{ line.url }}" style="font-size:13px;line-height:18px;font-weight:600;color:#2563eb;text-decoration:none;">Apply &rarr;</a></div>
+</td>
+</tr>
+</table>
+</td></tr>
+{% endfor %}
+{% if section.compact %}
+<tr><td style="padding:12px 20px 4px 20px;">
+<div style="font-size:13px;line-height:18px;font-weight:600;color:#52525b;">More Medium matches ({{ section.compact|length }})</div>
+</td></tr>
+{% for line in section.compact %}
+<tr><td style="padding:4px 20px;font-size:13px;line-height:18px;">
+<span style="display:inline-block;min-width:24px;font-weight:700;color:{{ badge_color(line.fit) }};">{{ line.score }}</span> {% if line.star %}<span style="color:#ca8a04;">&#9733;</span> {% endif %}{{ line.company }} &middot; {{ line.title }} &middot; <span style="color:#71717a;">{{ line.location }}</span>{% if line.rule %} &middot; <span style="color:#a1a1aa;">rule score</span>{% endif %} &middot; <a href="{{ line.url }}" style="color:#2563eb;text-decoration:none;">Apply</a>
+</td></tr>
+{% endfor %}
+{% endif %}
+{% endfor %}
+<tr><td style="padding:20px;font-size:12px;line-height:16px;color:#a1a1aa;">Scores: 75+ High, 50&ndash;74 Medium, ranked against your CV profile. Links come from the job boards. Jobs in this email are not sent again.</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>

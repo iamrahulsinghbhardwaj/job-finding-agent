@@ -4,6 +4,7 @@ Every function takes a Session and never commits: the caller owns the transactio
 can be committed (or rolled back) as a unit.
 """
 
+import hashlib
 from collections.abc import Iterable, Mapping, Sequence
 from decimal import Decimal
 from typing import Any, cast
@@ -55,8 +56,15 @@ def upsert_jobs(
         for start in range(0, len(group), _BATCH):
             rows = [_row(job, company_id, source_id, run_id) for job in group[start : start + _BATCH]]
             stmt = pg_insert(Job).values(rows)
+            # Years and the description hash refresh only from listings that carried a description.
             years = (
-                {"min_yoe": stmt.excluded.min_yoe, "max_yoe": stmt.excluded.max_yoe} if refresh_years else {}
+                {
+                    "min_yoe": stmt.excluded.min_yoe,
+                    "max_yoe": stmt.excluded.max_yoe,
+                    "description_hash": stmt.excluded.description_hash,
+                }
+                if refresh_years
+                else {}
             )
             stmt = stmt.on_conflict_do_update(
                 constraint="uq_job_company_id_source_job_id",
@@ -217,6 +225,7 @@ def _row(job: NormalizedJob, company_id: int, source_id: int, run_id: int) -> di
         "city": job.city,
         "min_yoe": job.min_yoe,
         "max_yoe": job.max_yoe,
+        "description_hash": description_hash(job.description_text),
         "url": str(job.url),
         "posted_at": job.posted_at,
         "first_seen_run_id": run_id,
@@ -261,13 +270,24 @@ def job_ids_for(session: Session, keys: Iterable[JobKey]) -> dict[JobKey, tuple[
     return found
 
 
+def description_hash(text: str | None) -> str | None:
+    """sha256 of a plain-text description; None without one (such jobs are never merged as duplicates)."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest() if text else None
+
+
 def save_descriptions(session: Session, texts: Mapping[int, str]) -> int:
-    """Store description_text for these job ids (filter survivors only). Returns rows updated."""
+    """Store description_text (and its hash) for these job ids (filter survivors only)."""
     if not texts:
         return 0
     table = Job.metadata.tables["job"]  # Core table: executemany UPDATE with bound parameters
-    stmt = update(table).where(table.c.id == bindparam("job_id")).values(description_text=bindparam("text"))
-    rows = [{"job_id": job_id, "text": text} for job_id, text in texts.items()]
+    stmt = (
+        update(table)
+        .where(table.c.id == bindparam("job_id"))
+        .values(description_text=bindparam("text"), description_hash=bindparam("digest"))
+    )
+    rows = [
+        {"job_id": job_id, "text": text, "digest": description_hash(text)} for job_id, text in texts.items()
+    ]
     session.execute(stmt, rows)
     return len(rows)
 

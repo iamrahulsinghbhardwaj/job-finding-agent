@@ -94,3 +94,31 @@ def test_in_ci(monkeypatch: pytest.MonkeyPatch, value: str, expected: bool) -> N
 
 def test_rank_options_keep_reasoning_low() -> None:
     assert RANK_OPTIONS == {"reasoning_effort": "low"}
+
+
+def test_digest_counts_line_is_counts_only() -> None:
+    from jobagent.digest.select import Digest, DigestLine, Section
+    from jobagent.jobs.run import format_digest_counts
+
+    line = DigestLine(
+        (1, 2), 88, "High", "Stripe", "PRIVATE TITLE", "Dublin, IE", "3+ yrs", 2, "why", "https://x"
+    )
+    section = Section("Tier 1 \u2014 Europe", full=[line])
+    digest = Digest([section], "1 new: 1 Europe", datetime(2026, 11, 27).date())
+    text = format_digest_counts(digest)
+    assert text == "digest: 1 lines (2 jobs); Tier 1 — Europe: 1 full + 0 compact"
+    assert "PRIVATE" not in text
+
+
+def test_check_settings_flag_replaces_the_old_dry_run(capsys: pytest.CaptureFixture[str]) -> None:
+    from jobagent.jobs.run import main
+
+    assert main(["--check-settings"]) == 0
+    assert "settings present" in capsys.readouterr().out
+
+
+def test_dry_run_is_now_a_full_run_needing_the_database(capsys: pytest.CaptureFixture[str]) -> None:
+    from jobagent.jobs.run import main
+
+    assert main(["--dry-run"]) == 2  # no DATABASE_URL in tests: it tried the full run
+    assert "DATABASE_URL is not set" in capsys.readouterr().err
