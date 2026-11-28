@@ -29,6 +29,7 @@ from typing import Any
 from openai import AsyncOpenAI
 from sqlalchemy.orm import Session
 
+from jobagent.core import healthcheck
 from jobagent.core.http import FetchError, PoliteClient
 from jobagent.core.llm import LlmError, LlmLedger
 from jobagent.core.models import Company, NormalizedJob, SearchSpec, Tier
@@ -331,7 +332,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     if output.rank_note:
         print(f"\n{output.rank_note}", file=sys.stderr)
         code = max(code, 1 if output.rank_note.startswith("ranking failed") else 0)
+    final_ping(code, dry_run=args.dry_run, settings=settings)  # the very last step
     return code
+
+
+def final_ping(code: int, *, dry_run: bool, settings: Settings) -> bool | None:
+    """Dead-man's switch: ping HEALTHCHECK_URL after a successful SENDING run only (a dry run must
+    not hide stopped sends). Returns the ping result, or None when no ping was due. Never raises,
+    and never changes the run's exit code."""
+    if code != 0 or dry_run or settings.healthcheck_url is None:
+        return None
+    return healthcheck.ping(settings.require("healthcheck_url"))
 
 
 def format_digest_counts(digest: Digest) -> str:

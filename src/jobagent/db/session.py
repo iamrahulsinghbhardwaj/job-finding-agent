@@ -18,4 +18,6 @@ def to_sqlalchemy_url(url: str) -> str:
 
 
 def make_engine(url: str) -> Engine:
-    return create_engine(to_sqlalchemy_url(url), pool_pre_ping=True)
+    # hide_parameters: SQLAlchemy errors would otherwise quote the bound values (job titles,
+    # descriptions, reasons) into exception messages, and Actions logs are public.
+    return create_engine(to_sqlalchemy_url(url), pool_pre_ping=True, hide_parameters=True)

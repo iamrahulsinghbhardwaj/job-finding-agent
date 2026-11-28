@@ -36,9 +36,15 @@ Design: [docs/HLD.md](docs/HLD.md)
 - [x] Alembic migrations: Company, Source, Job, Ranking, Run
 - [ ] OpenAI key as `OPENAI_API_KEY` secret + monthly budget cap in the OpenAI dashboard
 - [ ] Gmail API OAuth (send, compose drafts, read) → `GMAIL_TOKEN` secret
-- [ ] `.github/workflows/run.yml`: cron `30 2,12 * * *` + `workflow_dispatch`
-- [ ] `.github/workflows/keepalive.yml`: weekly, so the schedule never pauses
-- [ ] Logging rule: counts only, never job data, CV or email content (Actions logs are public)
+- [x] `.github/workflows/run.yml`: cron `30 2,12 * * *` + `workflow_dispatch` (mode: dry-run | send, default dry-run)
+  - gated on repo variable `JOBAGENT_ENABLED=true`; one run at a time, never cancelled mid-send; 20 min timeout
+  - [ ] Add the secrets and variables (README "Running it"); set `JOBAGENT_ENABLED` after the first digest is checked
+- [x] `.github/workflows/ci.yml`: ruff, pyright, pytest on pushes to main and pull requests
+- [x] `.github/workflows/keepalive.yml`: weekly, re-enables the scheduled workflows via the API
+  - [ ] Confirm after ~60 days that the schedule was not paused (GitHub does not document that re-enabling resets the timer)
+- [x] `.github/dependabot.yml`: weekly updates for actions (SHA-pinned) and uv
+- [x] Logging rule: counts only, never job data, CV or email content (Actions logs are public); SQL parameters hidden
+- [x] Optional dead-man's switch: `HEALTHCHECK_URL` pinged after each successful sending run
 
 **Registry**
 - [ ] `companies.yaml` seed: ~50 Tier 1 with careers URL, platform, India/Europe presence, `us_transfer_path`

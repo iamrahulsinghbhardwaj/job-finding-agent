@@ -93,6 +93,48 @@ interrupted run, whether a digest already went out, so nothing is ever sent twic
 For GitHub Actions, add the same four values (`GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`,
 `GMAIL_REFRESH_TOKEN`, `DIGEST_TO`) as repository secrets.
 
+## Running it (GitHub Actions)
+
+Three workflows in `.github/workflows/`:
+
+| Workflow | When | What |
+| --- | --- | --- |
+| `run.yml` | 08:00 and 18:00 IST, or by hand | migrate the DB, then crawl, filter, rank and email the digest |
+| `ci.yml` | every push to `main` and every pull request | ruff, pyright, pytest (database tests skip) |
+| `keepalive.yml` | weekly | re-enables the scheduled workflows so GitHub does not pause them after 60 days |
+
+**Secrets** (*Settings → Secrets and variables → Actions → Secrets*):
+`DATABASE_URL`, `OPENAI_API_KEY`, `CV_BLOB_SAS_URL`, `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`,
+`GMAIL_REFRESH_TOKEN`, `DIGEST_TO`; optional: `PROFILE_OVERRIDES_SAS_URL`, `HEALTHCHECK_URL`.
+
+**Variables** (same page, *Variables* tab; not secret): `RANK_MODEL`, `PROFILE_MODEL`; optional:
+`RANK_TOKEN_BUDGET`; and `JOBAGENT_ENABLED`.
+
+**Switching it on.** Scheduled runs do nothing until the variable `JOBAGENT_ENABLED` is `true`.
+Set it only after the first digest has been checked by hand (see "Gmail setup"): the first send
+emails the whole backlog.
+
+**Running by hand.** *Actions → run → Run workflow*, then pick `mode`:
+- `dry-run` (the default): the full pipeline with counts only; nothing is sent or marked as emailed;
+- `send`: the same as a scheduled run.
+
+**What the logs show.** Counts only: jobs per source, filter reasons, ranking tokens and cost, and
+digest line counts. Never titles, reasons, your profile, addresses or URLs. `CI=true` hides the
+top-10 list, GitHub masks secret values, and `out/digest.html` is never uploaded.
+
+**When something fails.** A failed send, ranking error or crash fails the workflow, and GitHub emails
+you (*Settings → Notifications → Actions*). A failed send is retried by the next run without
+duplicates. Tokens that expire: `CV_BLOB_SAS_URL` (the run warns 14 days ahead; generate a new SAS
+URL) and `GMAIL_REFRESH_TOKEN` (if revoked, run `scripts/gmail_auth.py` again).
+
+**Dead-man's switch (optional).** Catches what failure emails cannot: a schedule that stopped, or a
+run that never started.
+1. At healthchecks.io (free plan), create a check. Set **Period 1 day** and **Grace 2 hours**:
+   no ping for 26 h, and it emails you.
+2. Copy its ping URL into the secret `HEALTHCHECK_URL`.
+3. Every successful *sending* run pings it at the very end (dry runs do not, so a dry run can
+   never hide stopped sends). A failed ping never fails the run.
+
 ## License
 
 See [LICENSE](LICENSE).

@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     gmail_refresh_token: SecretStr | None = None
     digest_to: SecretStr | None = None  # personal address: keep out of public logs
 
+    # Dead-man's switch (optional): pinged at the end of every successful sending run
+    healthcheck_url: SecretStr | None = None
+
     @field_validator("*", mode="before")
     @classmethod
     def _empty_is_unset(cls, value: Any) -> Any:

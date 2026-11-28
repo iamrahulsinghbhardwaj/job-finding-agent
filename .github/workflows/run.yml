@@ -1,0 +1,74 @@
+# The job agent: crawl, filter, rank, digest. Twice a day, plus manual runs.
+# Logs are public (public repo): the run prints counts only (CI=true hides job data), secrets are
+# masked by GitHub and never echoed, and no artifacts are uploaded (out/digest.html holds job data).
+name: run
+
+on:
+  schedule:
+    - cron: "30 2,12 * * *"  # 08:00 and 18:00 IST (GitHub may start scheduled runs some minutes late)
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run: full pipeline, counts only, nothing sent or marked. send: email the digest."
+        type: choice
+        options: [dry-run, send]
+        default: dry-run
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jobagent-run
+  cancel-in-progress: false  # queue, never overlap, and never kill a run mid-send
+
+jobs:
+  run:
+    # Scheduled runs only once you set the repo variable JOBAGENT_ENABLED=true; manual runs always.
+    if: github.event_name == 'workflow_dispatch' || vars.JOBAGENT_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Schedule -> send; manual -> the chosen mode (default dry-run). Read in the shell as $MODE,
+      # never interpolated into the command line.
+      MODE: ${{ github.event_name == 'schedule' && 'send' || inputs.mode }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      CV_BLOB_SAS_URL: ${{ secrets.CV_BLOB_SAS_URL }}
+      PROFILE_OVERRIDES_SAS_URL: ${{ secrets.PROFILE_OVERRIDES_SAS_URL }}
+      GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
+      GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
+      GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
+      DIGEST_TO: ${{ secrets.DIGEST_TO }}
+      HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
+      RANK_MODEL: ${{ vars.RANK_MODEL }}
+      PROFILE_MODEL: ${{ vars.PROFILE_MODEL }}
+      RANK_TOKEN_BUDGET: ${{ vars.RANK_TOKEN_BUDGET }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d  # v10.4.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install
+        run: uv sync --locked --no-dev
+
+      - name: Cache the tiktoken table
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: .cache/tiktoken
+          key: tiktoken-o200k_base-446a9538
+
+      - name: Migrate the database
+        run: uv run --no-dev alembic upgrade head
+
+      - name: Run
+        run: |
+          if [ "$MODE" = "send" ]; then
+            uv run --no-dev python -m jobagent.jobs.run
+          else
+            uv run --no-dev python -m jobagent.jobs.run --dry-run
+          fi
