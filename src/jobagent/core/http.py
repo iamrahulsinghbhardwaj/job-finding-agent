@@ -1,4 +1,8 @@
-"""Polite HTTP client. All outbound HTTP in the project goes through PoliteClient.
+"""Polite HTTP client. All crawling of public sites goes through PoliteClient.
+
+Rule: PoliteClient for crawling public sites (job boards, careers APIs) and plain downloads (the
+CV blob, the tiktoken table). The APIs of your own accounts use their SDKs: OpenAI (core/llm),
+Gmail (digest/gmail).
 
 - One shared httpx.AsyncClient (timeouts, HTTP/2, identifying User-Agent).
 - Per domain: at most `per_domain_concurrency` requests in flight, and at least `min_delay`

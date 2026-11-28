@@ -337,3 +337,49 @@ def upsert_rankings(session: Session, rows: Sequence[Mapping[str, Any]]) -> int:
 def set_run_cost(session: Session, run_id: int, cost_usd: Decimal) -> None:
     if _rowcount(session, update(Run).where(Run.id == run_id).values(cost_usd=cost_usd)) != 1:
         raise LookupError(f"run {run_id} not found")
+
+
+# --- digest delivery (see digest/send.py) ---------------------------------------------------------
+
+DIGEST_SENDING = "sending"
+DIGEST_SENT = "sent"
+DIGEST_FAILED = "failed"
+
+
+def begin_digest(session: Session, run_id: int, job_ids: Iterable[int], rfc_message_id: str) -> None:
+    """Record what this run is about to email, BEFORE sending (status "sending")."""
+    values = {
+        "emailed_job_ids": sorted(set(job_ids)),
+        "digest_status": DIGEST_SENDING,
+        "digest_rfc_message_id": rfc_message_id,
+        "digest_attempted_at": func.now(),
+    }
+    if _rowcount(session, update(Run).where(Run.id == run_id).values(**values)) != 1:
+        raise LookupError(f"run {run_id} not found")
+
+
+def mark_digest_sent(session: Session, run_id: int, gmail_id: str) -> None:
+    session.execute(
+        update(Run)
+        .where(Run.id == run_id)
+        .values(digest_status=DIGEST_SENT, digest_gmail_id=gmail_id, digest_sent_at=func.now())
+    )
+
+
+def mark_digest_failed(session: Session, run_id: int) -> None:
+    session.execute(update(Run).where(Run.id == run_id).values(digest_status=DIGEST_FAILED))
+
+
+def sending_runs(session: Session) -> list[Run]:
+    """Runs whose send outcome is unknown (the process stopped mid-send): reconcile with Gmail."""
+    return list(session.scalars(select(Run).where(Run.digest_status == DIGEST_SENDING).order_by(Run.id)))
+
+
+def held_job_ids(session: Session) -> frozenset[int]:
+    """Job ids never to put in a new digest: those sent, and those whose send is still unknown
+    ("sending", until reconcile settles it). Only a "failed" run's jobs go out again."""
+    statuses = (DIGEST_SENT, DIGEST_SENDING)
+    ids = session.scalars(
+        select(func.unnest(Run.emailed_job_ids)).where(Run.digest_status.in_(statuses)).distinct()
+    )
+    return frozenset(int(i) for i in ids)

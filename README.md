@@ -66,6 +66,33 @@ flowchart LR
     P3 -->|"1 source auto-repaired"| V2["v2"]
 ```
 
+## Gmail setup (digest sending)
+
+The digest is sent **from a dedicated bot Gmail account** to your personal address (`DIGEST_TO`).
+The bot's token has two scopes only: `gmail.send` and `gmail.readonly` (used to check, after an
+interrupted run, whether a digest already went out, so nothing is ever sent twice).
+
+1. **Create the bot account**: a new Gmail address used only for sending the digest.
+2. **Google Cloud project**: at console.cloud.google.com, create a project (signed in as the bot),
+   then *APIs & Services → Library → Gmail API → Enable*.
+3. **OAuth consent screen**: *APIs & Services → OAuth consent screen*. User type **External**;
+   app name e.g. "job digest"; your bot address as support and developer contact. Add the scopes
+   `.../auth/gmail.send` and `.../auth/gmail.readonly`. Add the bot address under *Test users*.
+   Then **Publish app** (status "In production"): while an app stays in "Testing", Google expires
+   its refresh tokens after 7 days. Unverified is fine for your own account; you see a warning once.
+4. **OAuth client**: *APIs & Services → Credentials → Create credentials → OAuth client ID*,
+   application type **Desktop app**. Copy the client ID and secret into `.env` as
+   `GMAIL_CLIENT_ID` and `GMAIL_CLIENT_SECRET`.
+5. **Authorise once** (in your own terminal; the token is a secret):
+   `uv run python scripts/gmail_auth.py --write-env`. Sign in **as the bot account**. The script
+   writes `GMAIL_REFRESH_TOKEN` into `.env` without printing it.
+6. **Recipient**: set `DIGEST_TO=` (your personal address) in `.env`.
+7. **Check**: `uv run python -m jobagent.jobs.run --dry-run` writes `out/digest.html` without
+   sending; `uv run python -m jobagent.jobs.run` sends.
+
+For GitHub Actions, add the same four values (`GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`,
+`GMAIL_REFRESH_TOKEN`, `DIGEST_TO`) as repository secrets.
+
 ## License
 
 See [LICENSE](LICENSE).

@@ -2,16 +2,16 @@
 
     python -m jobagent.jobs.run --check-settings    # settings check only (names, never values)
     python -m jobagent.jobs.run --dry-run           # full run; write out/digest.html, send nothing
-    python -m jobagent.jobs.run                     # full run (sending arrives with the Gmail brick)
+    python -m jobagent.jobs.run                     # full run; sends the digest (Gmail)
     python -m jobagent.jobs.run --company amazon    # crawl a subset (repeatable)
 
 Crawl (fetch, normalize, store, count new jobs), the rule filter over every job fetched this run
 (counts per company, top rejection reasons), then the LLM ranker over filter survivors that have
 no LLM ranking for the current effective profile. Ranking needs OPENAI_API_KEY, RANK_MODEL,
 PROFILE_MODEL and CV_BLOB_SAS_URL; without them it is skipped. Locally it prints the top jobs;
-under CI (Actions logs are public) only counts. Then the digest (digest/select, digest/render):
-written to out/digest.html. Nothing is sent or recorded as emailed yet: the Gmail brick will send,
-then record Run.emailed_job_ids. No new jobs -> no digest file.
+under CI (Actions logs are public) only counts. Then the digest (digest/select, digest/render) is
+written to out/digest.html and, unless --dry-run, sent once through Gmail (digest/send: record,
+send, mark; an interrupted send is reconciled first). No new jobs -> no email.
 """
 
 import argparse
@@ -20,7 +20,7 @@ import logging
 import os
 import sys
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -36,8 +36,10 @@ from jobagent.core.registry import RegistryError, load_registry, load_search_spe
 from jobagent.core.settings import Settings
 from jobagent.core.tokens import TokenizerError, ensure_encoding_file, load_tokenizer
 from jobagent.db.session import make_engine
+from jobagent.digest.gmail import GmailMailer, Mailer, missing_gmail_settings
 from jobagent.digest.render import write_digest
 from jobagent.digest.select import Digest, select_digest
+from jobagent.digest.send import deliver, reconcile
 from jobagent.pipeline.crawl import CrawlResult, SourceOutcome, crawl
 from jobagent.pipeline.filter import FilterReport, filter_jobs
 from jobagent.pipeline.normalize import NormalizeStats
@@ -302,12 +304,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)  # one INFO line per request floods public logs
     engine = make_engine(settings.require("database_url"))
-    digest_line: str | None = None
+    digest_lines: list[str] = []
+    digest_code = 0
     try:
         with Session(engine) as session:
             output = asyncio.run(_run(session, companies, specs, settings))
             if output.profile is not None:
-                digest_line = _write_digest(session, output.profile, dry_run=args.dry_run)
+                digest_lines, digest_code = digest_step(
+                    session,
+                    output.profile,
+                    run_id=output.crawl.run_id,
+                    settings=settings,
+                    dry_run=args.dry_run,
+                )
     finally:
         engine.dispose()
     print(format_summary(output.crawl))
@@ -316,12 +325,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(format_rank(output.rank, output.ledger))
         if not in_ci():
             print(format_top(output.rank))
-    if digest_line:
-        print(f"\n{digest_line}")
+    if digest_lines:
+        print("\n" + "\n".join(digest_lines))
+    code = digest_code
     if output.rank_note:
         print(f"\n{output.rank_note}", file=sys.stderr)
-        return 1 if output.rank_note.startswith("ranking failed") else 0
-    return 0
+        code = max(code, 1 if output.rank_note.startswith("ranking failed") else 0)
+    return code
 
 
 def format_digest_counts(digest: Digest) -> str:
@@ -330,14 +340,53 @@ def format_digest_counts(digest: Digest) -> str:
     return f"digest: {digest.count} lines ({len(digest.job_ids)} jobs); {parts}"
 
 
-def _write_digest(session: Session, profile: ProfileSync, *, dry_run: bool) -> str:
-    digest = select_digest(session, profile.effective_hash, datetime.now(UTC).date())
+MailerFactory = Callable[[Settings], Mailer]
+
+
+def digest_step(
+    session: Session,
+    profile: ProfileSync,
+    *,
+    run_id: int,
+    settings: Settings,
+    dry_run: bool,
+    mailer_factory: MailerFactory = GmailMailer.from_settings,
+) -> tuple[list[str], int]:
+    """Build the digest, write out/digest.html, and (unless dry_run) send it exactly once.
+    Returns lines to print (counts only) and an exit code (1 when a send failed or cannot run)."""
+    today = datetime.now(UTC).date()
+    if dry_run:
+        digest = select_digest(session, profile.effective_hash, today)
+        if digest is None:
+            return ["digest: no new jobs, no digest"], 0
+        return [f"{format_digest_counts(digest)} -> {write_digest(digest)} (dry run, not sent)"], 0
+
+    missing = missing_gmail_settings(settings)
+    if missing:
+        digest = select_digest(session, profile.effective_hash, today)
+        written = f" ({format_digest_counts(digest)} -> {write_digest(digest)})" if digest else ""
+        return [f"digest not sent: missing {', '.join(missing)}{written}"], 1
+
+    mailer = mailer_factory(settings)
+    lines: list[str] = []
+    code = 0
+    settled = reconcile(session, mailer)
+    if settled.by_message_id or settled.by_subject or settled.failed:
+        lines.append(
+            f"digest reconcile: runs {settled.by_message_id} found by Message-ID, "
+            f"{settled.by_subject} by subject token, {settled.failed} not sent (their jobs go out now)"
+        )
+    if settled.errors:
+        lines += [f"digest reconcile failed, jobs held back: {e}" for e in settled.errors]
+        code = 1
+    digest = select_digest(session, profile.effective_hash, today)
     if digest is None:
-        return "digest: no new jobs, no digest"
-    path = write_digest(digest)
-    # Nothing is sent yet, so nothing is recorded as emailed (the Gmail brick sends, then records).
-    mode = "dry run, not sent" if dry_run else "not sent: sending arrives with the Gmail brick"
-    return f"{format_digest_counts(digest)} -> {path} ({mode})"
+        return [*lines, "digest: no new jobs, no email"], code
+    write_digest(digest)
+    delivery = deliver(session, digest, run_id=run_id, to=settings.require("digest_to"), mailer=mailer)
+    if delivery.status == "sent":
+        return [*lines, f"{format_digest_counts(digest)} -> sent (run {run_id})"], code
+    return [*lines, f"digest send failed (run {run_id}): {delivery.error}; next run retries"], 1
 
 
 if __name__ == "__main__":

@@ -77,6 +77,14 @@ def rank(session: Session, job_id: int, score: int, fit: str, effective_hash: st
     )
 
 
+def sent_digest(session: Session, job_ids: list[int]) -> int:
+    """A past run whose digest was sent with these jobs."""
+    run_id = repo.start_run(session)
+    repo.begin_digest(session, run_id, job_ids, f"<run-{run_id}@x>")
+    repo.mark_digest_sent(session, run_id, f"gmail-{run_id}")
+    return run_id
+
+
 def ids_in(session: Session) -> set[int]:
     digest = select_digest(session, HASH, TODAY)
     return set(digest.job_ids) if digest else set()
@@ -98,16 +106,31 @@ def test_already_emailed_jobs_are_left_out(session: Session) -> None:
     ids = seed(session, {"acme": [job("acme", "1"), job("acme", "2")]})
     for key in (("acme", "1"), ("acme", "2")):
         rank(session, ids[key], 80, "High")
-    old_run = repo.start_run(session)
-    repo.finish_run(session, old_run, {}, emailed_job_ids=[ids[("acme", "1")]])
+    sent_digest(session, [ids[("acme", "1")]])
     assert emailed_job_ids(session) == {ids[("acme", "1")]}
     assert ids_in(session) == {ids[("acme", "2")]}
+
+
+def test_a_failed_runs_jobs_go_out_again(session: Session) -> None:
+    ids = seed(session, {"acme": [job("acme", "1")]})
+    rank(session, ids[("acme", "1")], 80, "High")
+    run_id = repo.start_run(session)
+    repo.begin_digest(session, run_id, [ids[("acme", "1")]], "<m@x>")
+    repo.mark_digest_failed(session, run_id)
+    assert ids_in(session) == {ids[("acme", "1")]}
+
+
+def test_a_run_still_sending_holds_its_jobs_back(session: Session) -> None:
+    ids = seed(session, {"acme": [job("acme", "1")]})
+    rank(session, ids[("acme", "1")], 80, "High")
+    repo.begin_digest(session, repo.start_run(session), [ids[("acme", "1")]], "<m@x>")  # outcome unknown
+    assert select_digest(session, HASH, TODAY) is None
 
 
 def test_everything_emailed_means_no_digest(session: Session) -> None:
     ids = seed(session, {"acme": [job("acme", "1")]})
     rank(session, ids[("acme", "1")], 80, "High")
-    repo.finish_run(session, repo.start_run(session), {}, emailed_job_ids=[ids[("acme", "1")]])
+    sent_digest(session, [ids[("acme", "1")]])
     assert select_digest(session, HASH, TODAY) is None
 
 

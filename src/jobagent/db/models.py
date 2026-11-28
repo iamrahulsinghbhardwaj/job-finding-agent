@@ -90,6 +90,13 @@ class Run(Base):
     per_source_counts: Mapped[Json] = mapped_column(server_default=_EMPTY_JSON)
     emailed_job_ids: Mapped[list[int]] = mapped_column(ARRAY(Integer), server_default=text("'{}'"))
     cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    # Digest delivery (digest/send.py): None (no digest) -> sending -> sent | failed. emailed_job_ids is
+    # recorded BEFORE sending; only runs with status "sent" count as emailed.
+    digest_status: Mapped[str | None] = mapped_column(String(10))
+    digest_rfc_message_id: Mapped[str | None] = mapped_column(String(200))  # our Message-ID header
+    digest_gmail_id: Mapped[str | None] = mapped_column(String(100))  # Gmail's id once sent
+    digest_attempted_at: Mapped[datetime | None]
+    digest_sent_at: Mapped[datetime | None]
 
 
 class Job(Base):

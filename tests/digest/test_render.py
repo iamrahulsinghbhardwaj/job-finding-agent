@@ -133,3 +133,28 @@ def test_days_text() -> None:
 def test_write_digest_creates_the_file(tmp_path: Path) -> None:
     path = write_digest(fixed_digest(), tmp_path / "out" / "digest.html")
     assert path.read_text(encoding="utf-8").startswith("<!DOCTYPE html>")
+
+
+def test_plain_text_part_mirrors_the_lines() -> None:
+    from jobagent.digest.render import render_text
+
+    text = render_text(fixed_digest())
+    assert text.startswith("18 new: 16 India, 2 Europe\n")
+    assert "91 High  Examplecorp - Software Engineer II" in text
+    assert "    https://jobs.example.com/1" in text
+    assert "[rule score]" in text
+    assert "More Medium matches (3):" in text
+    assert "* Beta Pay - Backend Engineer 40" in text  # star in Europe
+    assert "<" not in text  # no HTML
+
+
+def test_a_big_backlog_digest_stays_under_gmails_clip_limit() -> None:
+    # Gmail clips HTML over ~102 KB. 171 lines like the first real backlog: 70 full, 101 compact.
+    title = "Software Development Engineer II, Team"
+    rows = [row(i, 80 + i % 15, title=f"{title} {i} Platform") for i in range(60)]
+    rows += [row(100 + i, 64 - i % 14, title=f"{title} {i}") for i in range(101)]
+    rows += [row(300 + i, 70, country="IE", city="Dublin") for i in range(10)]
+    digest = build_digest(rows, TODAY)
+    assert digest is not None
+    assert digest.count == 171
+    assert len(render_digest(digest).encode()) < 100 * 1024

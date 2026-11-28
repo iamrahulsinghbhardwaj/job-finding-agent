@@ -322,4 +322,4 @@ def test_migration_created_version_row(test_db: DbHandle) -> None:
     with test_db.engine.connect() as conn:
         query = text(f'SELECT version_num FROM "{test_db.schema}".alembic_version')
         version = conn.execute(query).scalar_one()
-    assert version == "0006"
+    assert version == "0007"

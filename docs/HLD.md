@@ -315,11 +315,12 @@ The main failure mode is silent: a source quietly returns zero jobs because the 
 - Read only public job data; no logins, no CAPTCHAs, no proxies to evade blocks
 - Respect robots.txt and per-domain delays; a site that blocks automation moves to email alerts
 - No LinkedIn, Naukri or Work at a Startup scraping
-- Never submit applications; never send email; drafts only, one follow-up maximum
+- Never submit applications; never send outreach email; drafts only, one follow-up maximum (the digest goes only to me, from a dedicated bot account)
 - Contacts only from public routes (published email, company careers address, public profile); no guessed emails or SMTP probing
 - Daily cap of 5 outreach drafts
 - Agents have step limits and budgets; every agent action is logged
 - Public repo: no CV, tokens or job data are ever committed
+- HTTP: `PoliteClient` (`core/http.py`) for crawling public sites and plain downloads (the CV via its SAS URL); the SDKs for my own accounts' APIs (OpenAI, Gmail)
 
 ---
 

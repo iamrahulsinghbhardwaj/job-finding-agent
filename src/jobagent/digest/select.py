@@ -1,7 +1,8 @@
 """Which ranked jobs go into the digest, grouped into sections (HLD §8). Reads the DB, no I/O else.
 
 A job qualifies when it is active, belongs to a Tier 1 company, is ranked High or Medium against
-the CURRENT effective profile hash, and is in no past Run.emailed_job_ids. Sections (MVP):
+the CURRENT effective profile hash, and is in no digest that was sent or may have been (runs with
+digest_status "sent", or "sending" until digest/send.reconcile settles it). Sections (MVP):
 Tier 1 India (country IN) and Tier 1 Europe (a hub country; star for us_transfer_path).
 
 Every section follows one rule: all High jobs in full; the top MEDIUM_FULL Medium jobs in full;
@@ -16,11 +17,11 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from jobagent.db import repo
-from jobagent.db.models import Company, Job, Ranking, Run
+from jobagent.db.models import Company, Job, Ranking
 from jobagent.pipeline import filter_config as cfg
 from jobagent.pipeline.locations import parse_location
 from jobagent.pipeline.rank import RULE_MODEL
@@ -106,9 +107,8 @@ class DigestRow:
 
 
 def emailed_job_ids(session: Session) -> frozenset[int]:
-    """Every job id recorded as emailed by any past run."""
-    ids = session.scalars(select(func.unnest(Run.emailed_job_ids)).distinct())
-    return frozenset(int(i) for i in ids)
+    """Job ids already sent, or whose send is still unknown; a failed send's jobs go out again."""
+    return repo.held_job_ids(session)
 
 
 def select_digest(session: Session, effective_profile_hash: str, today: date) -> Digest | None:
